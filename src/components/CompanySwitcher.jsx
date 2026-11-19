@@ -3,8 +3,8 @@ import React from "react";
 function CompanySwitcher({ companies, currentCompany, onSwitch, onNew, userName }) {
   const [open, setOpen] = React.useState(false);
   const s = {
-    wrap: { position:"relative" },
-    btn: { display:"flex", alignItems:"center", gap:8, padding:"6px 12px", borderRadius:10, background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", cursor:"pointer", color:"var(--sc-text)", fontSize:13, fontWeight:500 },
+    wrap: { position:"relative", minWidth:0 },
+    btn: { display:"flex", alignItems:"center", gap:8, minWidth:0, padding:"6px 12px", borderRadius:10, background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", cursor:"pointer", color:"var(--sc-text)", fontSize:13, fontWeight:500 },
     dot: { width:8, height:8, borderRadius:"50%", background:"var(--sc-success)", flexShrink:0 },
     dropdown: { position:"absolute", top:"calc(100% + 8px)", left:0, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:12, minWidth:240, boxShadow:"0 16px 48px rgba(0,0,0,0.6)", zIndex:100, overflow:"hidden" },
     header: { padding:"12px 16px", borderBottom:"1px solid var(--sc-border)", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1 },
@@ -17,7 +17,8 @@ function CompanySwitcher({ companies, currentCompany, onSwitch, onNew, userName 
     <div style={s.wrap}>
       <div style={s.btn} onClick={()=>setOpen(o=>!o)}>
         <div style={s.dot}/>
-        <span>{currentCompany?.name || "Select company"}</span>
+        {/* C753 — one line, cut short with "…" on a phone (it wrapped onto four lines and pushed the top bar off the screen) */}
+        <span className="sc-company-name" title={currentCompany?.name || ""} style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{currentCompany?.name || "Select company"}</span>
         <span style={{color:"var(--sc-text-2)",fontSize:10}}>▾</span>
       </div>
       {open && (

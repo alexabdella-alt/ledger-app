@@ -72,7 +72,7 @@ import { onboardingSteps } from "./lib/onboarding";
 import { notificationTarget } from "./lib/notificationDoor";
 import { makeKeyedInFlight } from "./lib/oneInFlight";
 import { readDeclinedRecurring, writeDeclinedRecurring } from "./lib/declinedRecurring";
-import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL } from "./lib/nav";
+import { visibleNav, isReviewerSeat, navRedirect, canSeeView, viewLabel, activeNavItem, ALL_VIEW_IDS, BOOKS_GROUP, SETTINGS_VIEW_IDS, GATED_VIEW_REDIRECT_COPY, PREVIEW_AS_OWNER_ENTER_LABEL, PREVIEW_AS_OWNER_EXIT_LABEL, PREVIEW_AS_OWNER_ENTER_SHORT, PREVIEW_AS_OWNER_EXIT_SHORT } from "./lib/nav";
 import { deriveStatementOpening, shouldProposeOpening, openingDiscrepancy, markAlreadyBooked, openingProposalCopy, periodMonthLabel, resolveAdoptedBalance, normalizeBankParse, bankTxnKey, bookedLineDirection } from "./lib/openingBalanceProposal";
 import { ruleForVendor } from "./lib/vendorRules";   // C563 — one rule matcher
 import { splitCsvForParse, mergeParsedPieces, readInHalves } from "./lib/statementChunks";   // C562
@@ -113,6 +113,7 @@ import ChatRichOutput from "./components/ChatRichOutput";
 import AuthScreen, { UpdatePasswordScreen } from "./components/AuthScreen";
 import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
+import NavIcon from "./components/NavIcon";
 import LegalView from "./components/LegalView";
 import { ERPContext } from "./components/ERPContext";
 import { usePersistedView } from "./hooks/usePersistedView";
@@ -9780,7 +9781,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         <div style={{ background:"var(--sc-surface)", borderBottom:"1px solid var(--sc-border)", flexShrink:0 }}>
           {/* Brand + Company + User row */}
           <div className="sc-topbar" style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", height:64 }}>
-            <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer" }}>
+            <div onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer", flexShrink:0 }}>
               {/* Eclipse logomark — a gold disc partly eclipsed by a midnight disc → a "shadow" crescent */}
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                 <defs>
@@ -9794,7 +9795,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               </svg>
               <span className="sc-wordmark sc-display sc-hide-tiny" style={{ fontSize:21, letterSpacing:1, fontWeight:600 }}>Shadow</span>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+            <div className="sc-topbar-right" style={{ display:"flex", alignItems:"center", gap:14, minWidth:0 }}>
               <CompanySwitcher companies={companies} currentCompany={currentCompany} onSwitch={onSwitchCompany} onNew={onNewCompany} />
               {/* C197 — PREVIEW AS OWNER. Renders the exact client experience without
                   touching the role: one click in, one click back, nothing persisted.
@@ -9809,7 +9810,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                     background: previewAsOwner ? "var(--sc-warning-soft)" : "transparent",
                     border:`1px solid ${previewAsOwner ? "var(--sc-warning)" : "var(--sc-border)"}`,
                     color: previewAsOwner ? "var(--sc-warning)" : "var(--sc-text-mut)", cursor:"pointer", fontSize:13, fontWeight:500, whiteSpace:"nowrap", transition:"all .15s" }}>
-                  {previewAsOwner ? PREVIEW_AS_OWNER_EXIT_LABEL : PREVIEW_AS_OWNER_ENTER_LABEL}
+                  <span className="sc-hide-narrow">{previewAsOwner ? PREVIEW_AS_OWNER_EXIT_LABEL : PREVIEW_AS_OWNER_ENTER_LABEL}</span>
+                  <span className="sc-show-narrow">{previewAsOwner ? PREVIEW_AS_OWNER_EXIT_SHORT : PREVIEW_AS_OWNER_ENTER_SHORT}</span>
                 </button>
               )}
               {/* Notifications — moved into the header with the sidebar (C312); it lived
@@ -9837,7 +9839,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                 <span className="sc-hide-narrow" style={{ fontSize:13, fontWeight:500 }}>Settings</span>
               </button>
               <span className="sc-hide-narrow" style={{ fontSize:11, color:"var(--sc-text-ph)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{session?.user?.email}</span>
-              <button onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
+              {/* C753 — on a phone, Sign out lives at the foot of Settings (the gear), so the top bar fits */}
+              <button className="sc-hide-narrow" onClick={onSignOut} style={{ padding:"6px 14px", borderRadius:8, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", fontSize:12, cursor:"pointer" }}>Sign out</button>
             </div>
           </div>
         </div>
@@ -9885,9 +9888,9 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               setView(id);
             };
             return (
-              <nav aria-label="Main" className="sc-sidenav" style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
+              <nav aria-label="Main" className={navSeat.isReviewerSeat ? "sc-sidenav" : "sc-sidenav sc-owner-nav"} style={{ width:212, flexShrink:0, background:"var(--sc-surface)", borderRight:"1px solid var(--sc-border)", overflowY:"auto", padding:"14px 0 24px" }}>
                 {navSeat.sections.map((section, si) => (
-                  <div key={section.id} style={{ marginTop: si ? 18 : 0 }}>
+                  <div key={section.id} data-navsec={section.id} style={{ marginTop: si ? 18 : 0 }}>
                     {section.label && (
                       <div style={{ padding:"0 20px 6px", fontSize:10, fontWeight:700, letterSpacing:1.1, textTransform:"uppercase", color:"var(--sc-text-ph)" }}>{section.label}</div>
                     )}
@@ -9906,9 +9909,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                             border:"none", borderLeft:`3px solid ${isActive ? accent : "transparent"}`, paddingLeft:17,
                             color: isActive ? (admin ? "var(--sc-warning)" : "var(--sc-gold)") : "var(--sc-text-mut)",
                             fontSize:13, fontWeight: isActive ? 600 : 500, fontFamily:"var(--sc-font-ui)", cursor:"pointer", transition:"all .12s" }}>
-                          <span style={{ flex:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>
+                          {!navSeat.isReviewerSeat && <NavIcon id={id} />}
+                          <span className="sc-navlabel" style={{ flex:1, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{label}</span>
                           {badge != null && (
-                            <span style={{ flexShrink:0, background:"var(--sc-warning)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{badge}</span>
+                            <span className="sc-navbadge" style={{ flexShrink:0, background:"var(--sc-warning)", color:"var(--sc-on-accent)", fontSize:10, fontWeight:700, borderRadius:20, padding:"1px 6px", lineHeight:1.4 }}>{badge}</span>
                           )}
                           {admin && adminFailedCount>0 && (
                             <span title={`${adminFailedCount} failed upload${adminFailedCount!==1?"s":""} in 24h`} style={{ width:8, height:8, borderRadius:"50%", background:"var(--sc-error)", flexShrink:0 }} />
@@ -10097,7 +10101,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
 
       {/* ── FLOATING AI CHAT ───────────────────────────────────────────────── */}
       {/* Bubble button */}
-      <button onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
+      <button className="sc-chat-fab" aria-label={chatOpen ? "Close the assistant" : "Open the assistant"} onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
         position:"fixed", bottom:28, right:28, width:58, height:58, borderRadius:"50%",
         background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", cursor:"pointer",
         boxShadow:"0 8px 32px rgba(109,40,217,0.5)", display:"flex", alignItems:"center", justifyContent:"center",
@@ -10131,6 +10135,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                 <button onClick={()=>setAiInfoOpen(true)} title="What can the assistant do?"
                   style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:13, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
+                <button className="sc-chat-close" onClick={()=>setChatOpen(false)} aria-label="Close the assistant" title="Close"
+                  style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:16, lineHeight:1, display:"none", alignItems:"center", justifyContent:"center" }}>×</button>
                 <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
                   style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"var(--sc-gold)":"var(--sc-surface)", border:`1px solid ${chatHistoryView?"var(--sc-gold)":"var(--sc-border-2)"}`, color:chatHistoryView?"var(--sc-surface)":"var(--sc-text-2)", cursor:"pointer", whiteSpace:"nowrap" }}>
                   {chatHistoryView ? "← Chat" : "History"}

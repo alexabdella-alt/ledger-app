@@ -220,6 +220,7 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
 .sc-phone-only { display: none !important; }
 @media (pointer: coarse) { .sc-phone-only { display: flex !important; } }
 .sc-show-narrow { display: none; }
+.sc-navicon { display: none; }   /* C753 — the phone tab bar's icons; a laptop's menu is words only */
 
 @media (max-width: 760px) {
   /* top bar: logo, company, bell, gear, sign out — no email, no "Settings" word */
@@ -289,5 +290,38 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   /* the assistant: nearly full width, never taller than the screen */
   .sc-chat-panel { left: 8px !important; right: 8px !important; width: auto !important;
     bottom: 88px !important; height: min(560px, calc(100dvh - 150px)) !important; }
+}
+/* ★ C753 — A PHONE THAT DOESN'T SLIDE SIDEWAYS, AND A TAB BAR AT THE BOTTOM (operator's iPhone
+   screenshots, 2026-11-19). The top bar was wider than the screen — the business name wrapped onto
+   four lines and the gear and "Sign out" sat past the right edge — so the whole page could be pushed
+   sideways and cut off at both sides. Now the top bar fits (name on one line, cut with "…"; Sign out
+   moves into Settings; a short preview label), nothing may widen the page, and the owner's five main
+   places sit in a bar along the bottom, icon over name, the way phone apps work. Ask is a tab, so the
+   floating assistant bubble steps aside and the assistant gets its own close button. */
+@media (max-width: 760px) {
+  html, body { overflow-x: hidden; max-width: 100%; }
+  .sc-topbar-right { flex-shrink: 1; }
+  .sc-company-name { display: block; max-width: 34vw; }
+
+  .sc-owner-nav [data-navsec="main"] { position: fixed !important; left: 0; right: 0; bottom: 0; z-index: 900;
+    display: flex !important; flex-direction: row !important; background: var(--sc-surface);
+    border-top: 1px solid var(--sc-border); box-shadow: 0 -6px 20px rgba(0,0,0,.22);
+    padding: 2px 2px calc(2px + env(safe-area-inset-bottom)) !important; }
+  .sc-owner-nav [data-navsec="main"] .sc-navtab { flex: 1 1 0 !important; flex-direction: column !important;
+    align-items: center !important; justify-content: center !important; gap: 3px !important; min-height: 56px !important;
+    padding: 6px 2px 4px !important; border-bottom: none !important; border-top: 2px solid transparent !important;
+    position: relative; font-size: 11px !important; }
+  .sc-owner-nav [data-navsec="main"] .sc-navtab.active { border-top-color: var(--sc-gold) !important; }
+  .sc-owner-nav [data-navsec="main"] .sc-navlabel { flex: none !important; font-size: 11px; }
+  .sc-owner-nav .sc-navicon { display: flex !important; }
+  .sc-owner-nav [data-navsec="main"] .sc-navbadge { position: absolute; top: 4px; left: calc(50% + 7px); }
+  .sc-owner-nav [data-navsec="settings-entry"] { display: none !important; }   /* the gear in the top bar is Settings */
+  .sc-owner-nav:not(:has([data-navsec="settings"])) { border-bottom: none !important; }
+  .sc-owner-nav ~ #main-content .sc-page { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
+
+  body:has(.sc-owner-nav) .sc-chat-fab { display: none !important; }
+  body:has(.sc-owner-nav) .sc-chat-panel { bottom: calc(66px + env(safe-area-inset-bottom)) !important;
+    height: min(600px, calc(100dvh - 140px)) !important; }
+  .sc-chat-panel .sc-chat-close { display: flex !important; }
 }
 @media (max-width: 420px) { .sc-hide-tiny { display: none !important; } }   /* the wordmark; the logo stays */

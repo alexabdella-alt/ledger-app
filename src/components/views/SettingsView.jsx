@@ -122,6 +122,13 @@ export default function SettingsView() {
                   <div style={{fontSize:10,letterSpacing:3,color:"var(--sc-text-2)",marginBottom:8}}>SETTINGS</div>
                   <h1 style={{fontSize:28,fontWeight:600,margin:0,letterSpacing:-0.5}}>Company</h1>
                   <div style={{fontSize:13,color:"var(--sc-text-2)",marginTop:6}}>Your business details and bank accounts — used on the invoices you send and on your tax forms.</div>
+                  {/* ★ C753 — Sign out, where a phone can reach it: the top bar hides it on a narrow screen so it fits */}
+                  {onSignOut && (
+                    <div data-settings-account style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginTop:14,padding:"10px 14px",background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:10}}>
+                      <span style={{fontSize:13,color:"var(--sc-text-2)",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Signed in as <b style={{color:"var(--sc-text)",fontWeight:600}}>{session?.user?.email || "you"}</b></span>
+                      <button onClick={onSignOut} style={{padding:"6px 14px",borderRadius:8,background:"transparent",border:"1px solid var(--sc-border-2)",color:"var(--sc-text-2)",fontSize:13,cursor:"pointer",flexShrink:0}}>Sign out</button>
+                    </div>
+                  )}
                 </div>
                 {loadFailures?.companies && <div style={{marginBottom:20}}><LoadFailedNotice what="company details" table="companies" /></div>}   {/* C456 — the form below would show the reset defaults */}
 

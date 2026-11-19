@@ -33,10 +33,10 @@ describe("C585 — a phone layout for the signed-in app", () => {
   it("the app's frame carries the hooks those rules need", () => {
     expect(app).toMatch(/className="sc-topbar"/);
     expect(app).toMatch(/className="sc-shell-body"/);
-    expect(app).toMatch(/<nav aria-label="Main" className="sc-sidenav"/);
+    expect(app).toMatch(/<nav aria-label="Main" className=\{navSeat\.isReviewerSeat \? "sc-sidenav" : "sc-sidenav sc-owner-nav"\}/);   // C753 — the owner's phone tab bar
     expect(app).toMatch(/className="sc-rise sc-page"/);
     expect(app).toMatch(/className="sc-chat-panel"/);
-    expect((app.match(/className="sc-hide-narrow"/g) || []).length).toBe(2);   // the email and the word "Settings" (C746: the operator badge now shows a short form on a phone instead of hiding)
+    expect((app.match(/className="sc-hide-narrow"/g) || []).length).toBe(4);   // the email, the word "Settings", the long preview label and Sign out (C753 — it moves into Settings on a phone); C746: the operator badge shows a short form instead of hiding
   });
   it("the screen you are on is kept in sight in the menu strip", () => {
     expect(app).toMatch(/document\.querySelector\("\.sc-sidenav \.sc-navtab\.active"\)\?\.scrollIntoView\(\{ block: "nearest", inline: "center" \}\)/);
