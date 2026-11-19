@@ -3,7 +3,7 @@ import { categoryLabel, showCodesFor, ownerAccountName } from "../lib/categoryLa
 import { plainWriteError } from "../lib/plainWriteError";
 import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
-import { initials, vendorColor, fmtDate, fmtMoney, todayLocal } from "../lib/format";
+import { initials, vendorColor, fmtDate, fmtMoney, todayLocal, readableDates } from "../lib/format";
 import { validateUpload } from "../lib/uploadGuard";
 import { glIsRevenue, glIsExpense } from "../lib/gl";
 import { classifyTxn, settlementKind, entryTotalOf, entryLineCount, displayParty } from "../lib/txnPresent";
@@ -177,7 +177,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
   const cls = classifyTxn(sel, { apCode, arCode, settled: settledBases(invoices) });   // C528
-  const party = displayParty(sel, invoices);   // C539 — a settlement's own `vendor` is the word "Payment"
+  const party = readableDates(displayParty(sel, invoices));   // C752 — dates as dates (the list already did, C707); C539 — a settlement's own `vendor` is the word "Payment"
   const settle = settlementKind(sel);
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
@@ -285,14 +285,15 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 28, alignItems: "start" }}>
               <div>
                 {[
-                  ["Description", sel.description || "—"],
+                  ["Description", readableDates(sel.description) || "—"],   // C752
                   ["Category", `${(showCodes ? sel.gl_name : ownerAccountName(sel.gl_name)) || sel.gl_code || "—"}${entryLineCount(sel, invoices) > 1 ? ` · ${entryLineCount(sel, invoices)} lines (see Full entry)` : ""}`],
                   [showCodes ? "Against" : "Paid from / into", sel.secondary_gl_code ? ((showCodes ? sel.secondary_gl_name : ownerAccountName(sel.secondary_gl_name)) || sel.secondary_gl_code) : "—"],   // C580; C646 plain names
-                  ["Type", settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? (showCodes ? "Revenue" : "Income") : (showCodes ? "Expense" : "Spending")],   // C647 — the Money page's own words
-                  ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
+                  ["Type", sel.source === "opening_balance" ? "Starting balance" : settle === "ar_collection" ? "Collection (money in)" : settle === "ap_payment" ? "Payment (money out)" : isRevenue(sel) ? (showCodes ? "Revenue" : "Income") : (showCodes ? "Expense" : "Spending")],   // C647 — the Money page's own words
+                  // C752 — only where we actually guessed: a starting balance was typed in, not read.
+                  sel.source === "opening_balance" ? null : ["How sure we were", sel.confidence != null ? `${sel.confidence}%` : "—"],
                   // C646 — no "— · Feb 2": only the parts that were recorded.
                   sel.payment_status === "paid" ? ["Payment", [sel.payment_method_used ? methodLabel(sel.payment_method_used) : null, sel.paid_at ? fmtDate(sel.paid_at) : null, sel.payment_reference || null].filter(Boolean).join(" · ") || "Paid"] : null,
-                  (sel.payment_status === "paid" || sel.payment_status === "collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used === "bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date ? ` (${sel.matched_bank_date})` : ""}` : "Manually marked paid"] : null,
+                  (sel.payment_status === "paid" || sel.payment_status === "collected") ? ["How paid", (sel.auto_matched || sel.payment_method_used === "bank_transfer") ? `Auto-matched from bank statement${sel.matched_bank_date ? ` (${fmtDate(sel.matched_bank_date)})` : ""}` : "Manually marked paid"] : null,
                 ].filter(Boolean).map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 14, padding: "11px 0", borderBottom: "1px solid var(--sc-surface-2)", fontSize: 13 }}>
                     <span style={{ color: "var(--sc-text-2)", flexShrink: 0 }}>{k}</span>

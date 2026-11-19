@@ -144,4 +144,15 @@ describe("a single transaction, on the owner's seat", () => {
     const t = textOf(render(() => <TransactionDetailPanel invoiceId="bare" onClose={() => {}} />, "TransactionDetailPanel", owner, { invoices: [...INVOICES, bare] }));
     expect(t).toMatch(/Payment Paid How paid/);
   });
+  // ★ C752 — seen live: the starting-balances entry read "Opening balances as of 2026-01-01",
+  // "Type Spending" (it is +$12,483 of cash) and "How sure we were 99%" (it was typed in, not read).
+  it("★★ a starting balance: dates as dates, 'Starting balance', no confidence line, no receipt box", () => {
+    const ob = { ...INVOICES.find((i) => i.id === "i2"), id: "ob1", db_entry_id: "ob1", vendor: "Opening balances as of 2026-01-01", description: "Opening balances as of 2026-01-01", source: "opening_balance", gl_code: "1000", gl_name: "Cash", secondary_gl_code: "3400", secondary_gl_name: "Opening Balance Equity", confidence: 99, import_metadata: {} };
+    const t = textOf(render(() => <TransactionDetailPanel invoiceId="ob1" onClose={() => {}} />, "TransactionDetailPanel", owner, { invoices: [...INVOICES, ob], docLibrary: [] }));
+    expect(t).not.toMatch(/2026-01-01/);
+    expect(t).toMatch(/Opening balances as of Jan 1, 2026/);
+    expect(t).toMatch(/Type Starting balance/);
+    expect(t).not.toMatch(/How sure we were/);
+    expect(t).not.toMatch(/No receipt or bill saved/);
+  });
 });

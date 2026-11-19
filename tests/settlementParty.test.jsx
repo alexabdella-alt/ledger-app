@@ -33,7 +33,7 @@ describe("C539", () => {
   });
   it("the panel's headline reads the party", () => {
     const src = fs.readFileSync("src/components/TransactionDetailPanel.jsx", "utf8").replace(/\/\/.*$/gm, "");
-    expect(src).toContain("const party = displayParty(sel, invoices);");
+    expect(src).toContain("const party = readableDates(displayParty(sel, invoices));");   // C752 — dates as dates
     expect(src).toContain("{party || \"—\"}");
   });
 });
