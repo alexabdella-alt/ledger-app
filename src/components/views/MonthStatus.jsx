@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { loadCompleteness } from "../../lib/completenessLoad";
-import { ownerMonthLine } from "../../lib/completeness";
+import { ownerMonthLines } from "../../lib/completeness";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ★ C740 — THE OWNER'S MONTHS. Replaces the sign-off panel on Reports (operator, 2026-11-18: "I don't
@@ -24,7 +24,7 @@ export function MonthStatusView({ state }) {
   if (state.failed) return <div data-month-status="failed" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>We couldn't check your months just now — that's not a sign anything is wrong. Reload the page to try again.</div>;
   const r = (state.report || [])[0];
   if (!r || r.status === "empty") return null;
-  const lines = [...(r.months || [])].reverse().map((m) => ownerMonthLine(m)).filter(Boolean);
+  const lines = ownerMonthLines([...(r.months || [])].reverse());   // C749 — a run of months says it once
   if (!lines.length) return null;
   return (
     <div data-month-status="ready" style={card}>

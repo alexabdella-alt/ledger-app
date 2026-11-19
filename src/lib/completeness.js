@@ -179,3 +179,37 @@ export function ownerMonthLine(month = {}) {
   if (month.status === "unchecked") return { tone: "you", text: `${label} — not checked against your bank yet. Drop that month's bank statement on Home.` };
   return { tone: "team", text: `${label} — our team is finishing this month.` };
 }
+
+// ★ C749 — RUNS OF MONTHS SAY IT ONCE. Seen live: five lines in a row, "June 2026 — not checked against
+// your bank yet. Drop that month's bank statement on Home." through October. Adjacent months that say
+// the same thing become one line ("June – October 2026 — not checked … those months' bank statements").
+// `months` in display order (newest first); the range always reads oldest – newest.
+const PLURAL = [
+  [/that month's bank statement/g, "those months' bank statements"],
+  [/Drop it on Home/g, "Drop them on Home"],
+  [/(your .+?) statement\./g, "$1 statements."],
+  [/finishing this month/g, "finishing these months"],
+];
+export function ownerMonthLines(months = []) {
+  const lines = [];
+  for (const m of months || []) {
+    const l = ownerMonthLine(m);
+    if (!l) continue;
+    const label = monthName(m.period);
+    const rest = l.text.startsWith(label) ? l.text.slice(label.length) : null;
+    const prev = lines[lines.length - 1];
+    if (prev && rest != null && prev.tone === l.tone && prev.rest === rest && prev.oldest === nextMonth(m.period)) {
+      prev.oldest = m.period; prev.count += 1;
+    } else {
+      lines.push({ tone: l.tone, rest, text: l.text, newest: m.period, oldest: m.period, count: 1 });
+    }
+  }
+  return lines.map((g) => {
+    if (g.count === 1 || g.rest == null) return { tone: g.tone, text: g.text };
+    const [oy, ny] = [g.oldest.slice(0, 4), g.newest.slice(0, 4)];
+    const range = oy === ny ? `${monthName(g.oldest).replace(/ \d{4}$/, "")} – ${monthName(g.newest)}` : `${monthName(g.oldest)} – ${monthName(g.newest)}`;
+    let rest = g.rest;
+    for (const [re, to] of PLURAL) rest = rest.replace(re, to);
+    return { tone: g.tone, text: `${range}${rest}` };
+  });
+}
