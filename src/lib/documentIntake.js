@@ -83,6 +83,20 @@ export async function insertIntake(db, row) {
 // Advance an intake row's status (+ optional JE link / detail), then confirm the status
 // committed via the returned row. journal_entry_ids is an array, so we verify `status`
 // (scalar) rather than deep-comparing the array.
+// ★ C742 — TELL THE OPERATOR WHEN AN UPLOAD DIDN'T MAKE IT. A status change that means "this upload
+// did not reach the books and the owner can't fix it" raises an alert (the app registers a handler
+// that sends a Sentry event — the operator gets an email from their Sentry alert rule). Only the
+// company and the intake id travel: no filename, no contents. Pure decision; the handler is the I/O.
+export function intakeAlertKind(status, detail = "") {
+  const d = String(detail || "");
+  if (status === INTAKE_STATUS.FAILED) return "upload_failed";
+  if (status === INTAKE_STATUS.HELD && /^Still not processed/.test(d)) return "upload_stale";
+  if (status === INTAKE_STATUS.HELD && /couldn't extract/i.test(d)) return "upload_unreadable";
+  return null;
+}
+let intakeAlertHandler = null;
+export function setIntakeAlertHandler(fn) { intakeAlertHandler = typeof fn === "function" ? fn : null; }
+
 export async function setIntakeStatus(db, id, status, { journalEntryIds = null, detail = undefined, documentId = undefined } = {}) {
   if (!db || id == null) return { ok: false, error: "no db client / id" };
   const patch = { status, updated_at: new Date().toISOString() };
@@ -93,6 +107,8 @@ export async function setIntakeStatus(db, id, status, { journalEntryIds = null, 
     const upd = await db.from("document_intake").update(patch).eq("id", id).select().single();
     if (upd.error || !upd.data) return { ok: false, error: upd.error?.message || "intake update returned no row" };
     if (upd.data.status !== status) return { ok: false, error: "intake status did not persist" };
+    const alertKind = intakeAlertKind(status, detail);   // C742 — after the write landed, never before
+    if (alertKind && intakeAlertHandler) { try { intakeAlertHandler({ kind: alertKind, intakeId: String(id), companyId: upd.data.company_id ? String(upd.data.company_id) : null }); } catch { /* an alert must never break the write */ } }
     return { ok: true, row: upd.data };
   } catch (e) { return { ok: false, error: String(e?.message || e) }; }
 }

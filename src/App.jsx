@@ -37,7 +37,8 @@ import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openin
 import { nextUrgentDeadline, nextWaitingDeadline, taxEstimate, deadlineIsWaiting, profileForYear, paidForYear } from "./lib/tax";
 import { buildAccountInsert, buildCompanyUpdate, mapCompanyRow } from "./lib/writeShapes";
 import { buildVendorRuleRow, buildRecurringRow, recurringRunPatch, normalizeContactType, insertVerified, updateVerified, deleteVerified } from "./lib/chatActions";
-import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile } from "./lib/documentIntake";
+import { INTAKE_STATUS, buildIntakeRow, insertIntake, setIntakeStatus, fetchDroppedIntake, fetchIntakeRows, hashFile, setIntakeAlertHandler } from "./lib/documentIntake";
+import OperatorAlertBadge from "./components/OperatorAlertBadge";
 import { recordedEntryLinks } from "./lib/intakeEntryLinks";
 import { payrollHoldDetail, heldPayrollCards, deferredToAccountantCards, signedPeriodHoldCards, signedPeriodHoldDetail, CLARIFICATION_HOLD_DETAIL, heldQuestionRows, heldUnreadableRows, heldPartialRows, partialHoldDetail, EXTRACT_FAILED_DETAIL, NOTHING_EXTRACTED_DETAIL, UNREADABLE_HOLD_PREFIX } from "./lib/waitingOnYou";
 import { classifyFailure, drainProgressCopy, FAILURE_KIND } from "./lib/intakeDrain";
@@ -460,6 +461,15 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   // persisted, changes ONLY what renders — never the role, never write access.
   const isPlatformAdmin = PLATFORM_ADMIN_EMAILS.includes(session?.user?.email);
   const [previewAsOwner, setPreviewAsOwner] = useState(false);
+  // ★ C742 — an upload that didn't make it alerts the operator through Sentry (their alert rule emails
+  // them). One issue per company and kind (the fingerprint), so a new client's problem is a new email.
+  // Only ids travel — no filename, no contents.
+  useEffect(() => {
+    setIntakeAlertHandler(({ kind, intakeId, companyId }) => {
+      try { Sentry.captureMessage("upload_not_recorded", { level: "error", fingerprint: ["upload_not_recorded", kind, String(companyId || "unknown")], tags: { kind, alert: "upload_not_recorded" }, extra: { intake_id: intakeId, company_id: companyId } }); } catch { /* never breaks a write */ }
+    });
+    return () => setIntakeAlertHandler(null);
+  }, []);
   const canPreviewAsOwner = isReviewerSeat({ role: userRole, isPlatformAdmin });
 
   const [invoices, setInvoices] = useState([]);
@@ -9782,6 +9792,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   touching the role: one click in, one click back, nothing persisted.
                   Only a reviewer seat can see it, and while it's on the label says
                   plainly that this is a preview so nobody mistakes it for a lockout. */}
+              {/* ★ C742 — the operator's alert: a client with something missing, without going to look */}
+              {isPlatformAdmin && !previewAsOwner && <span className="sc-hide-narrow"><OperatorAlertBadge supabase={supabase} onOpen={() => setView("admin")} /></span>}
               {canPreviewAsOwner && (
                 <button onClick={()=>setPreviewAsOwner(v=>!v)}
                   title={previewAsOwner ? "Return to your full view" : "See exactly what the business owner sees"}
