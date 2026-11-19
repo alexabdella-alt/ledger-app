@@ -1,4 +1,5 @@
 import React from "react";
+import { completenessReport, completenessSummary, monthName } from "../../lib/completeness";
 import { createPortal } from "react-dom";
 import { useERP } from "../ERPContext";
 import { fmtDate , fmtSignedMoney } from "../../lib/format";
@@ -24,7 +25,7 @@ const dt = ts => ts ? new Date(ts).toLocaleString("en-US", { month: "short", day
 
 export default function AdminView() {
   const { supabase, session, enterSupport, showNotification, logAudit } = useERP();
-  const [tab, setTab] = React.useState("clients");
+  const [tab, setTab] = React.useState("completeness");   // C738 — the operator's first question: is anything missing?
 
   const rpc = async (name, args, { silent } = {}) => {
     try {
@@ -40,7 +41,7 @@ export default function AdminView() {
     } catch (e) { console.error(name, e); if (!silent) showNotification(`${name} failed`, "error"); return null; }
   };
 
-  const TABS = [["clients", "Clients"], ["problems", "Problems"], ["stats", "Stats"], ["recovery", "Data Recovery"], ["system", "System"]];
+  const TABS = [["completeness", "Completeness"], ["clients", "Clients"], ["problems", "Problems"], ["stats", "Stats"], ["recovery", "Data Recovery"], ["system", "System"]];
 
   return (
     <div>
@@ -62,6 +63,7 @@ export default function AdminView() {
         ))}
       </div>
 
+      {tab === "completeness" && <CompletenessTab supabase={supabase} enterSupport={enterSupport} />}
       {tab === "clients" && <ClientsTab rpc={rpc} enterSupport={enterSupport} showNotification={showNotification} logAudit={logAudit} supabase={supabase} />}
       {tab === "problems" && <ProblemsTab rpc={rpc} enterSupport={enterSupport} />}
       {tab === "stats" && <StatsTab rpc={rpc} />}
@@ -90,6 +92,124 @@ const Loading = () => <div style={{ padding: 28, textAlign: "center", color: A.m
 const btn = (bg, color, border) => ({ padding: "5px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: bg, color, border: border || "none", cursor: "pointer", whiteSpace: "nowrap" });
 // Compact button for dense action groups (Clients table).
 const btnSm = (bg, color, border) => ({ padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: bg, color, border: border || "none", cursor: "pointer", whiteSpace: "nowrap", lineHeight: 1.3 });
+
+// ── ★ C738 — COMPLETENESS, EVERY CLIENT ─────────────────────────────────────
+// Reads the same rows each company's own checks read (the intake ledger, bank statements and their
+// lines, reconciliations) for every company at once — the platform admin's membership bypass (§3)
+// lets the normal client see them — and says per client and per month what is missing
+// (lib/completeness.js). Paged, because PostgREST returns 1,000 rows at most. ★ A failed read is
+// NOT an empty one: if any table can't be read the page says so and shows no verdicts at all.
+async function pageAll(build) {
+  const rows = [];
+  for (let from = 0; from < 500000; from += 1000) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) return { ok: false, error: error.message || String(error), rows };
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return { ok: true, rows };
+}
+const CELL = {
+  complete:    { c: "var(--sc-success)", bg: "var(--sc-success-soft)", t: "✓", label: "Complete" },
+  attention:   { c: "var(--sc-warning)", bg: "var(--sc-warning-soft)", t: "!", label: "In progress" },
+  problem:     { c: "var(--sc-error)",   bg: "var(--sc-error-soft)",   t: "✕", label: "Something's missing" },
+  in_progress: { c: "var(--sc-text-2)",  bg: "transparent",            t: "…", label: "This month" },
+  unchecked:   { c: "var(--sc-text-mut)", bg: "transparent",           t: "—", label: "Nothing to check against" },
+  before:      { c: "var(--sc-text-mut)", bg: "transparent",           t: "",  label: "Before the books start" },
+};
+// The read, separate from the screen so it can be tested against a fake client.
+export async function loadCompleteness(supabase, now = new Date()) {
+    const [companies, intake, accounts, statements, openLines, recons] = await Promise.all([
+      pageAll(() => supabase.from("companies").select("id, name, cutoff_date").order("id")),
+      pageAll(() => supabase.from("document_intake").select("company_id, status, received_at, updated_at, filename, detail").order("id")),
+      pageAll(() => supabase.from("bank_accounts").select("id, company_id, name, active, institution, last4, current_balance, created_at, updated_at").order("id")),
+      pageAll(() => supabase.from("bank_statements").select("id, company_id, bank_account_id, period_start, period_end, status").order("id")),
+      pageAll(() => supabase.from("bank_statement_lines").select("company_id, statement_id, line_date, status").in("status", ["pending", "excepted"]).order("id")),
+      pageAll(() => supabase.from("reconciliations").select("company_id, account_id, status, statement_balance, statement_balance_verified, period_start, period_end").order("id")),
+    ]);
+    const parts = { companies, uploads: intake, "bank accounts": accounts, "bank statements": statements, "statement lines": openLines, "bank matches": recons };
+    const failed = Object.entries(parts).filter(([, r]) => !r.ok).map(([k, r]) => `${k} (${r.error})`);
+    if (failed.length) return { loading: false, failed };
+    const report = completenessReport({ companies: companies.rows, intake: intake.rows, accounts: accounts.rows, statements: statements.rows, openLines: openLines.rows, recons: recons.rows, now });
+    return { loading: false, report, at: now };
+}
+export function CompletenessTab({ supabase, enterSupport, initial = null }) {
+  const [state, setState] = React.useState(initial || { loading: true });
+  const [open, setOpen] = React.useState(null);
+  const load = React.useCallback(async () => {
+    setState({ loading: true });
+    setState(await loadCompleteness(supabase, new Date()));
+  }, [supabase]);
+  React.useEffect(() => { if (!initial) load(); }, [load]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (state.loading) return <Loading />;
+  if (state.failed) return (
+    <Card accent={A.red} title="Couldn't check completeness">
+      <div data-completeness-failed style={{ fontSize: 13, color: "var(--sc-text)", lineHeight: 1.6 }}>
+        These couldn't be read, so this page can't vouch for any client right now — this is <strong>not</strong> a clean bill: {state.failed.join(" · ")}.
+        <div style={{ marginTop: 10 }}><button onClick={load} style={btnSm(A.amber, "var(--sc-on-accent)")}>Try again</button></div>
+      </div>
+    </Card>
+  );
+  const sum = completenessSummary(state.report);
+  const periods = (state.report[0]?.months || []).map((m) => m.period);
+  return (
+    <>
+      <div data-completeness-summary style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        {[["problem", `${sum.problem} with something missing`], ["attention", `${sum.attention} in progress`], ["complete", `${sum.complete} complete`]].map(([k, t]) => (
+          <span key={k} style={{ fontSize: 13, fontWeight: 600, color: CELL[k].c, background: CELL[k].bg, borderRadius: 20, padding: "4px 12px" }}>{t}</span>
+        ))}
+        {sum.empty > 0 && <span style={{ fontSize: 13, color: A.muted }}>{sum.empty} with nothing yet</span>}
+        <span style={{ marginLeft: "auto", fontSize: 12, color: A.muted }}>Checked {state.at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · <button onClick={load} style={{ background: "none", border: "none", color: A.amber, cursor: "pointer", fontSize: 12, padding: 0 }}>Check again</button></span>
+      </div>
+      <Card title={`Every client (${sum.total})`}>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, color: A.muted, fontWeight: 600 }}>CLIENT</th>
+              {periods.map((p) => <th key={p} style={{ padding: "6px 4px", fontSize: 11, color: A.muted, fontWeight: 600, textAlign: "center" }}>{monthName(p).slice(0, 3)}</th>)}
+              <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 11, color: A.muted, fontWeight: 600 }}>WHAT'S MISSING</th>
+              <th />
+            </tr></thead>
+            <tbody>
+              {state.report.map((r) => (
+                <React.Fragment key={r.companyId}>
+                  <tr data-completeness-row={r.status} onClick={() => setOpen(open === r.companyId ? null : r.companyId)} style={{ cursor: r.items.length ? "pointer" : "default", borderTop: "1px solid var(--sc-surface-2)" }}>
+                    <td style={{ padding: "9px 10px", fontSize: 13, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap" }}>{r.name}</td>
+                    {r.months.map((m) => (
+                      <td key={m.period} title={`${monthName(m.period)} — ${CELL[m.status].label}`} style={{ padding: "6px 4px", textAlign: "center" }}>
+                        <span style={{ display: "inline-flex", width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: CELL[m.status].c, background: CELL[m.status].bg }}>{CELL[m.status].t}</span>
+                      </td>
+                    ))}
+                    <td style={{ padding: "9px 10px", fontSize: 12, color: r.items.length ? "var(--sc-text)" : A.muted }}>
+                      {r.status === "empty" ? "Nothing uploaded yet" : r.items.length ? `${r.items[0].text}${r.items.length > 1 ? ` (+${r.items.length - 1} more)` : ""}` : "Nothing missing"}
+                    </td>
+                    <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                      <button onClick={(e) => { e.stopPropagation(); enterSupport({ id: r.companyId, name: r.name }); }} style={btnSm("var(--sc-surface-2)", "var(--sc-text)", "1px solid var(--sc-border-2)")}>Open</button>
+                    </td>
+                  </tr>
+                  {open === r.companyId && r.items.length > 0 && (
+                    <tr><td colSpan={periods.length + 3} style={{ padding: "4px 10px 12px 22px" }}>
+                      {r.items.map((it, i) => (
+                        <div key={i} data-completeness-item={it.severity} style={{ fontSize: 12.5, color: "var(--sc-text)", padding: "3px 0", display: "flex", gap: 8 }}>
+                          <span style={{ color: it.severity === "problem" ? A.red : A.amber, fontWeight: 700 }}>{it.severity === "problem" ? "✕" : "!"}</span>{it.text}
+                        </div>
+                      ))}
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      <div style={{ fontSize: 12, color: A.muted, lineHeight: 1.6, marginTop: 4 }}>
+        ✓ every upload reached the books (or a question), every bank account has a statement for the month, every line on it is in the books, and it matches to the penny. ✕ something is missing. ! work in progress. — nothing to check against yet.
+        Cash, and any card or account we have no statements for, are outside every check.
+      </div>
+    </>
+  );
+}
 
 // ═══ SECTION 1: CLIENTS ═══
 function ClientsTab({ rpc, enterSupport, showNotification, supabase }) {
