@@ -9,7 +9,7 @@ import path from "node:path";
 
 const files = [];
 (function walk(d) { for (const f of readdirSync(d)) { const p = path.join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(jsx?|ts)$/.test(f)) files.push(p); } })("src");
-const ALLOWED = new Set(["src/components/views/TeamView.jsx"]);   // step 3 (roles) — tightened when the Accountant role goes
+const ALLOWED = new Set([]);   // C741 — the Team page no longer offers an Accountant role
 const literals = (src) => {
   const out = [];
   src.split("\n").forEach((line, i) => {

@@ -61,30 +61,25 @@ describe("C550 — the Team screen's heading describes the roles it actually off
   const code = codeOnly(team);
   const options = [...code.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map((m) => ({ role: m[1], label: m[2] }));
 
-  it("the dropdown still offers three roles (the C225 set)", () => {
-    expect(options.map((o) => o.role)).toEqual(["viewer", "accountant", "admin"]);
+  // ★ C741 — the Shadow team is every client's reviewer (C739): owners invite a partner or an
+  // assistant — view only, or full access. No Accountant role to invite.
+  it("★ C741 — the dropdown offers view only and full access; no Accountant", () => {
+    expect(options.map((o) => o.role)).toEqual(["viewer", "admin"]);
+    expect(code).not.toMatch(/<option value="accountant"/);
   });
 
   it("★★★ the dead role is gone from the heading — it is the screen C225 fixed for that reason", () => {
     expect(code).not.toMatch(/as admins \(full access\) or members/);
   });
 
-  it("★★ every capability the heading promises is one an OPTION offers", () => {
-    const heading = code.match(/Invite someone to your books[^<]*/);
+  it("★★ every capability the heading promises is one an OPTION offers — and it promises no sign-off", () => {
+    const heading = code.match(/Invite a business partner or an assistant[^<]*/);
     expect(heading, "the invite heading moved — re-aim this, do not delete it").toBeTruthy();
     const labels = options.map((o) => o.label.toLowerCase()).join(" | ");
-    // The heading lists the three choices in the order the dropdown shows them.
     expect(heading[0]).toMatch(/look without changing anything/);
-    expect(heading[0]).toMatch(/review and sign off a month/);
     expect(heading[0]).toMatch(/full access/);
+    expect(heading[0]).not.toMatch(/sign off/);
     expect(labels).toMatch(/can't change anything/);
-    expect(labels).toMatch(/review and sign off a month/);
     expect(labels).toMatch(/full access/);
-  });
-
-  it("★ and the accountant — the role this product is built around — is named at all", () => {
-    // The old heading offered admins and 'members' and omitted the only role that can sign
-    // off a month, which is the whole reason an owner invites anyone (O131 / D2).
-    expect(code).toMatch(/review and sign off a month/);
   });
 });

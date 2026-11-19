@@ -102,7 +102,7 @@ export default function TeamView() {
             The heading above it went on offering "admins or members" and never mentioned the
             accountant, which is the role this product is built around. It now describes the
             options that are actually there, in the order they appear. */}
-        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite someone to your books and choose what they can do — look without changing anything, review and sign off a month, or full access.</div>
+        <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Invite a business partner or an assistant, and choose what they can do — look without changing anything, or full access.</div>
       </div>
 
       {/* ★ SAY "WE COULDN'T ASK", NEVER SHOW AN EMPTY TEAM WE DID NOT CONFIRM. On the one
@@ -126,9 +126,9 @@ export default function TeamView() {
                 inserted a role the check rejects and **the invite could not be accepted at
                 all.** The default option was the broken one. Pinned by a test that reads
                 the allowed set out of the schema, so the two cannot drift again. */}
-            <option value="viewer">Viewer — can see the books, can't change anything</option>
-            <option value="accountant">Accountant — can review and sign off a month</option>
-            <option value="admin">Admin — full access to the books and settings</option>
+            <option value="viewer">View only — can see the books, can't change anything</option>
+            {/* ★ C741 — no Accountant role to invite: the Shadow team is every client's reviewer (C739). Existing accountant members keep working. */}
+            <option value="admin">Full access — a partner or assistant who helps run the books</option>
           </select>
           <button onClick={sendInvite} disabled={busy} style={{ height: 40, padding: "0 18px", borderRadius: 10, fontSize: 14, fontWeight: 600, color: "var(--sc-on-accent)", background: busy ? "var(--sc-gold)" : "var(--sc-gold)", border: "none", cursor: busy ? "default" : "pointer" }}>
             {busy ? "Creating…" : "Create invite"}
@@ -136,7 +136,6 @@ export default function TeamView() {
         </div>
         {/* ★ C735 — the two things that trip an owner up, said before they click */}
         <div data-invite-hints style={{ marginTop: 10, fontSize: 12, color: "var(--sc-text-2)", lineHeight: 1.5 }}>
-          {role === "viewer" && <div data-invite-role-hint>Inviting your accountant? Choose “Accountant” so they can review and sign off your months.</div>}
           <div>Use the email address they'll sign in with — the invite only works for that address.</div>
         </div>
         {lastLink && (

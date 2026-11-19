@@ -31,7 +31,7 @@ export const AUTH_HEADINGS = {
 // view-only teammate alike — the two people for whom the difference matters most.
 export function inviteRoleLabel(role) {
   switch (String(role || "").toLowerCase()) {
-    case "admin": return "an admin";
+    case "admin": return "someone with full access";   // C741 — a partner or assistant
     case "accountant": return "their accountant";
     case "viewer": return "a view-only member";
     case "owner": return "an owner";
@@ -92,7 +92,7 @@ export const DROPZONE_COPY = {
 // ★ C735 — the invite, emailed from the owner's own mail app (no sending domain needed): a mailto
 // with the link and the one rule that trips people up — the invite works only for the address it
 // was sent to. Pure.
-export function inviteMailto({ email = "", link = "", companyName = "", role = "accountant" } = {}) {
+export function inviteMailto({ email = "", link = "", companyName = "", role = "viewer" } = {}) {
   const biz = String(companyName || "").trim() || "my business";
   const subject = `Join ${biz}'s books on Shadow`;
   const body = [

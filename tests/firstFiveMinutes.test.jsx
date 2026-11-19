@@ -25,7 +25,7 @@ describe("C583 — the sign-in page speaks to a business owner", () => {
   it("an invite names the role as the person will hold it", () => {
     expect(inviteRoleLabel("accountant")).toBe("their accountant");
     expect(inviteRoleLabel("viewer")).toBe("a view-only member");
-    expect(inviteRoleLabel("admin")).toBe("an admin");
+    expect(inviteRoleLabel("admin")).toBe("someone with full access");   // C741 — a partner or assistant
     expect(inviteRoleLabel(undefined)).toBe("a member");
     const page = text(renderToStaticMarkup(<AuthScreen onAuth={() => {}} invite={{ status: "pending", companyName: "Riverside Bakery", role: "accountant" }} />));
     expect(page).toMatch(/invited to join Riverside Bakery as their accountant/);

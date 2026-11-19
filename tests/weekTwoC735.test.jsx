@@ -43,13 +43,12 @@ describe("inviting the accountant", () => {
     expect(body).toContain("https://x.app/?invite=abc");
     expect(body).toContain("pat@cpa.com — the invite only works for it");
   });
-  it("★ the form says the same-address rule, and nudges Viewer → Accountant (the default stays least-privilege)", () => {
+  it("★ the form says the same-address rule (the default stays least-privilege; C741 — no Accountant nudge)", () => {
     const h = renderViewHtml(TeamView, { ...POPULATED, ...(VIEW_CONTEXT["TeamView.jsx"] || {}), isOwner: true, companyDataLoaded: true }).replace(/<!-- -->/g, "");
     expect(h).toContain("the invite only works for that address");
-    expect(h).toContain("data-invite-role-hint");
+    expect(h).not.toContain("data-invite-role-hint");
     const src = readFileSync("src/components/views/TeamView.jsx", "utf8");
     expect(src).toMatch(/const \[role, setRole\] = React\.useState\("viewer"\);/);
-    expect(src).toMatch(/\{role === "viewer" && <div data-invite-role-hint>/);
     expect(src).toMatch(/href=\{inviteMailto\(\{ email: lastInvite\.email, link: lastLink/);
   });
 });
