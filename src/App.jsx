@@ -9950,7 +9950,10 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           {view==="money" && <MoneyView />}
 
           {/* BOOKS — consolidated transactions */}
-          {view==="books" && <BooksView />}
+          {/* C748 — an owner who reaches the transactions list another way (the assistant, a link,
+              "show me my transactions") gets their Money page — the same list, with the two figures
+              and their words — not the accountant's "All transactions … AI reasoning" screen. */}
+          {view==="books" && (navSeat.isReviewerSeat ? <BooksView /> : <MoneyView />)}
 
           {/* ADD INVOICE */}
           {view==="add" && <AddView />}
