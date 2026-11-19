@@ -53,7 +53,7 @@ export function scrubOwnerActivity(detail) {
 // snake_case identifier, so it is humanised rather than printed raw.
 // ★ C747 — what older payment rows still say on the live feed, put in plain words:
 //   "alexabdella@… paid Nike, Inc. · $151.55 via BANK_TRANSFER"            (a COLLECTION, raw method)
-//   "Nike, Inc. · $151.55 auto-matched & marked collected from bank statement (n/a)"
+//   "Nike, Inc. · $151.55 auto-matched & marked collected from bank statement (n/a)"   (Nike was a bill PAID)
 // The actor is "You" when it's the person reading, "Our team" for Support Mode; a raw method code
 // reads as words; "(n/a)" goes; a collection's "paid" becomes "received from". Current writers
 // already say "collected from" and pretty methods — this is for the rows already in the log.
@@ -61,7 +61,9 @@ const METHOD_WORDS = { BANK_TRANSFER: "bank transfer", ACH: "ACH", CHECK: "check
 export function plainPaymentWords(detail, { action = "", viewerEmail = "" } = {}) {
   let s = String(detail || "");
   s = s.replace(/\s*\(n\/a\)/gi, "");
-  s = s.replace(/auto-matched & marked (collected|paid) from bank statement/i, (_, w) => `matched to your bank statement and marked ${w === "collected" ? "received" : "paid"}`);
+  // Neutral on purpose: the old writer said "collected" for bills it PAID (seen live: Nike, an
+  // expense, "auto-matched & marked collected"), so the old word can't be trusted to name the side.
+  s = s.replace(/auto-matched & marked (collected|paid) from bank statement/i, "matched to your bank statement");
   s = s.replace(/\bvia ([A-Z][A-Z_]+)\b(?![a-z]|\s*\/)/g, (m, code) => code === "ACH" ? m : (METHOD_WORDS[code] ? `by ${METHOD_WORDS[code]}` : `by ${code.toLowerCase().replace(/_/g, " ")}`));
   const lead = s.match(/^(Platform Admin - \S+|\S+@\S+) /);
   if (lead) {

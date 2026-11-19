@@ -25,11 +25,11 @@ describe("C747 — old payment lines in plain words", () => {
     expect(ownerActivityText({ action: "invoice_paid", detail: `${me} paid Google LLC · $99.59 via ACH / Bank Transfer` }, { viewerEmail: me }))
       .toBe("You paid Google LLC · $99.59 via ACH / Bank Transfer");
   });
-  it("★★ the auto-match line loses its jargon and its '(n/a)'", () => {
+  it("★★ the auto-match line loses its jargon and its '(n/a)' — and doesn't trust the old word for which side", () => {
     expect(plainPaymentWords("Nike, Inc. · $151.55 auto-matched & marked collected from bank statement (n/a)"))
-      .toBe("Nike, Inc. · $151.55 matched to your bank statement and marked received");
+      .toBe("Nike, Inc. · $151.55 matched to your bank statement");   // neutral: live, Nike was a bill PAID that the old writer called "collected"
     expect(plainPaymentWords("Sysco · $9.00 auto-matched & marked paid from bank statement (n/a)"))
-      .toBe("Sysco · $9.00 matched to your bank statement and marked paid");
+      .toBe("Sysco · $9.00 matched to your bank statement");
   });
   it("★ anything else is untouched", () => {
     expect(plainPaymentWords("Recoded Sysco to Food Cost")).toBe("Recoded Sysco to Food Cost");
