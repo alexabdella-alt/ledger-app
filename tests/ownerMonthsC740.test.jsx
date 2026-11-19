@@ -32,6 +32,9 @@ describe("the owner's months", () => {
   it("★ a month the operator closed reads 'closed' (and a closed month with a hole is NOT shown closed)", () => {
     expect(lines({ signoffs: [{ company_id: "c1", period: "2026-10" }] })["2026-10"]).toBe("October 2026 — closed. Every upload is in and it matches your bank.");
     expect(lines({ signoffs: [{ company_id: "c1", period: "2026-10", revoked_at: "2026-11-01" }] })["2026-10"]).toMatch(/— complete\./);
+    // closed, but an upload from that month failed afterwards: not "closed" — our team has it
+    const holed = lines({ signoffs: [{ company_id: "c1", period: "2026-10" }], intake: [...base.intake, { company_id: "c1", status: "failed", received_at: "2026-10-20T00:00:00Z", filename: "late.pdf" }] });
+    expect(holed["2026-10"]).toBe("October 2026 — our team is finishing this month.");
   });
   it("★ asks the owner only for what they can do — a missing statement", () => {
     expect(lines({ statements: [base.statements[0]] })["2026-10"]).toBe("October 2026 — waiting for your Chase Checking statement. Drop it on Home.");
