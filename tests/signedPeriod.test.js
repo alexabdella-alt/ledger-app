@@ -58,7 +58,7 @@ describe("signedPeriodOwnerCopy — plain language, no jargon", () => {
     expect(c.body).toMatch(/already reviewed|signed off/i);
     expect(c.reopen).toMatch(/reopen/i);
     expect(c.rebook).toMatch(/current month/i);
-    expect(c.cpa).toMatch(/accountant/i);
+    expect(c.cpa).toMatch(/our team/i);   // C739
     // Cardinal Principle: no jargon
     const all = [c.title, c.body, c.reopen, c.rebook, c.cpa].join(" ");
     expect(all).not.toMatch(/period_signoff|debit|credit|journal|GL\b/i);

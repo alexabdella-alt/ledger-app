@@ -79,7 +79,7 @@ export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {
     return {
       mode: REMOVAL.DELETE,
       period: null,
-      confirm: `Remove the entry for ${who}? You'll have 30 seconds to undo, and your accountant can restore it later.`,
+      confirm: `Remove the entry for ${who}? You'll have 30 seconds to undo, and we can restore it later.`,
       done: null,   // the delete path owns its own toast (it carries the Undo action)
     };
   }
@@ -88,7 +88,7 @@ export function planEntryRemoval(entry, signoffs = [], { monthLabel = null } = {
     mode: REMOVAL.CORRECT,
     period,
     // Says what will happen and WHY, without the words "void", "reversal" or "journal".
-    confirm: `${label} has already been signed off by your accountant, so we won't change it. We'll record a correction dated today that cancels this out instead. Go ahead?`,
+    confirm: `${label} has already been signed off, so we won't change it. We'll record a correction dated today that cancels this out instead. Go ahead?`,
     done: `Corrected — we recorded it today rather than changing ${label}.`,
   };
 }
@@ -126,11 +126,11 @@ export function planBulkRemoval(entries = [], signoffs = [], { monthLabel = null
 
   const n = removable.length;
   const confirm = n
-    ? `Remove ${n} ${n === 1 ? "entry" : "entries"}? You'll have 30 seconds to undo, and your accountant can restore them later.`
+    ? `Remove ${n} ${n === 1 ? "entry" : "entries"}? You'll have 30 seconds to undo, and we can restore them later.`
     : null;
   // Says what will be LEFT BEHIND and why, before anything happens — not afterwards.
   const parts = [];
-  if (signed.length) parts.push(`${signed.length} of these ${signed.length === 1 ? "is" : "are"} in ${months.length === 1 ? months[0] : "months"} your accountant has signed off, so we won't change ${months.length === 1 ? "it" : "them"} in bulk. Open ${signed.length === 1 ? "that one" : "those"} individually and we'll record a correction dated today instead.`);
+  if (signed.length) parts.push(`${signed.length} of these ${signed.length === 1 ? "is" : "are"} in ${months.length === 1 ? months[0] : "months"} that have been signed off, so we won't change ${months.length === 1 ? "it" : "them"} in bulk. Open ${signed.length === 1 ? "that one" : "those"} individually and we'll record a correction dated today instead.`);
   if (kept.length) parts.push(`${kept.length === 1 ? "One of these is" : `${kept.length} of these are`} your starting balances. ${OPENING_KEEP_SENTENCE}`);
   const blocked = parts.length ? parts.join(" ") : null;
 
@@ -159,9 +159,9 @@ export function signedPeriodOwnerCopy(period) {
   const label = monthLabel(period) || "an earlier month";
   return {
     title: `This is dated ${label} — already reviewed`,
-    body: `This entry is dated ${label}, which your accountant has already reviewed and signed off. Adding it now would change ${label}'s numbers after they were approved.`,
-    reopen: `Add it to ${label} and reopen ${label} for your accountant to re-review`,
+    body: `This entry is dated ${label}, which has already been reviewed and signed off. Adding it now would change ${label}'s numbers after they were approved.`,
+    reopen: `Add it to ${label} and reopen ${label} for our team to re-review`,
     rebook: `Add it to the current month instead (keeps the original date on file)`,
-    cpa: `Send it to your accountant to decide`,
+    cpa: `Send it to our team to decide`,
   };
 }

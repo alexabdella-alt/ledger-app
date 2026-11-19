@@ -93,7 +93,7 @@ export default function Tax1099View() {
     ]);
     const blob = new Blob([toCSV(head, body)], { type:"text/csv" });
     const u = URL.createObjectURL(blob); const a=document.createElement("a"); a.href=u; a.download=`1099_data_${taxYear}.csv`; a.click(); URL.revokeObjectURL(u);
-    showNotification && showNotification("1099 file downloaded ✓ Next: send it to your accountant, or upload it to your filing service (e.g. Track1099 or the IRS's IRIS) before January 31.");
+    showNotification && showNotification("1099 file downloaded ✓ Next: send it to your tax preparer, or upload it to your filing service (e.g. Track1099 or the IRS's IRIS) before January 31.");
   };
 
   const card = { background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, boxShadow:"0 1px 3px rgba(0,0,0,.08)" };

@@ -14,7 +14,7 @@ export const AUTH_TAGLINE = "Shadow does your bookkeeping, watches the numbers, 
 export const AUTH_FEATURES = [
   ["Drop it in, and it's done", "A bill, a receipt, a bank statement — drop it in. We read it, file it under the right category, and tell you why."],
   ["Ask in plain English", "“What did I spend on software this year?” “Who owes me money?” Answers come from your real numbers."],
-  ["Ready for your accountant", "Every change is recorded, so your accountant can review your books and sign off each month."],
+  ["Nothing slips through", "Every upload is tracked until it's in your books, and every month is matched to your bank."],
 ];
 // ★ ONLY WHAT IS VERIFIED (§11's hard rule for the client-facing story): tenant isolation was
 // audited table by table; the audit trail exists. "ASC 842 compliant" was a compliance claim

@@ -250,7 +250,7 @@ describe("(3) route guard — a stale link goes Home, never to an error", () => 
   });
   it("the bounce copy assumes zero accounting knowledge", () => {
     expect(containsOwnerJargon(GATED_VIEW_REDIRECT_COPY)).toBe(false);
-    expect(GATED_VIEW_REDIRECT_COPY).toMatch(/accountant/i);
+    expect(GATED_VIEW_REDIRECT_COPY).toMatch(/our team/i);   // C739 — the Shadow team
     expect(GATED_VIEW_REDIRECT_COPY).not.toMatch(/permission|denied|not allowed|error|unauthor/i);
   });
 });
@@ -366,13 +366,13 @@ describe("(5) the chrome renders from the helper, and Home never links a client 
 
   it("the client-seat replacement copy passes the Cardinal-Principle bar", () => {
     const clientCopy = [
-      "We've got your statement — your accountant will add these to your books.",
-      "A few things from your statement need a second look — your accountant is on it.",
-      "We've read your agreement — your accountant will record it.",
-      "We couldn't tell what one of your files was — your accountant will take a look.",
-      "Your accountant is taking a look at this.",
-      "Got it — we've saved that for your accountant to add to your books.",
-      "Got it — we've saved your statement for your accountant to add to your books.",
+      "We've got your statement — our team will add these to your books.",
+      "A few things from your statement need a second look — our team is on it.",
+      "We've read your agreement — our team will record it.",
+      "We couldn't tell what one of your files was — it's saved in Documents, and our team will take a look.",
+      "Our team is taking a look at this.",
+      "Got it — we've saved that for our team to add to your books.",
+      "Got it — we've saved your statement for our team to add to your books.",
     ];
     for (const c of clientCopy) {
       expect([c, containsOwnerJargon(c)]).toEqual([c, false]);           // no accounting concepts

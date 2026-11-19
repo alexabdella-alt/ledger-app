@@ -40,7 +40,7 @@ export default function CoaView() {
     if (!String(addDraft.name || "").trim()) { showNotification("Please enter a name for the category.", "error"); return; }
     // C578 — an owner is never asked for a number; a blank code (either seat) is chosen for them.
     const code = codeForNewCategory(addDraft, CHART_OF_ACCOUNTS);
-    if (!code) { showNotification("There's no room left for another category of that type — ask your accountant.", "error"); return; }
+    if (!code) { showNotification("There's no room left for another category of that type — ask us.", "error"); return; }
     const err = codeError(code, null);
     if (err) { showNotification(err, "error"); return; }
     setBusy("add");

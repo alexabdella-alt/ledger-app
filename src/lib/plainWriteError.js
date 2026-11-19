@@ -20,7 +20,7 @@ const RULES = [
   [/failed to fetch|fetch failed|networkerror|network|timeout|timed out/i, "The connection dropped — check your network and try again."],
   [/jwt|expired|401|403|not authenticated|auth session/i, "Your sign-in has expired — sign out and back in, then try again."],
   [/violates check constraint|invalid input|out of range|invalid_/i, "One of the values wasn't accepted — check what you typed."],
-  [/column .* does not exist|relation .* does not exist|schema cache|function .* does not exist/i, "Something on our side needs fixing — nothing you typed is wrong. Your accountant can see the details in the activity log."],
+  [/column .* does not exist|relation .* does not exist|schema cache|function .* does not exist/i, "Something on our side needs fixing — nothing you typed is wrong. Our team can see the details in the activity log."],
 ];
 
 // Does the message look like it was written for a person? Code-shaped text (quotes,

@@ -104,7 +104,7 @@ describe("the card (source)", () => {
     expect(w).toBeGreaterThan(0); expect(g).toBeGreaterThan(w); expect(st).toBeGreaterThan(g); expect(ok).toBeGreaterThan(st);
   });
   it("every non-booking resolution tells the row what happened before its success state", () => {
-    for (const [kind, text] of [["attached", '"Filed with the payment we already recorded"'], ["deferred", '"Set aside for your accountant — nothing booked"'], ["skipped", '"Skipped — duplicate"'], ["skipped", '"Skipped — marked personal"']]) {
+    for (const [kind, text] of [["attached", '"Filed with the payment we already recorded"'], ["deferred", '"Set aside for our team — nothing booked"'], ["skipped", '"Skipped — duplicate"'], ["skipped", '"Skipped — marked personal"']]) {
       const i = card.indexOf(`finishWithSuccess(${text}`);
       expect(i, text).toBeGreaterThan(0);
       expect(card.slice(i - 260, i)).toMatch(new RegExp(`settleClarification\\?\\.\\(item, \\{ kind: "${kind}"`));

@@ -1866,7 +1866,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // original date is on file when the write that would have put it there failed.
             showNotification(stamp.original_date
               ? `Saved in the current month — but we couldn't record its original date of ${stamp.original_date}. It's in the activity log, not on the entry.`
-              : `Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.`, "error");
+              : `Saved — but we couldn't record this invoice's sales tax for the monthly cross-check. Our team may see a sales-tax mismatch that isn't real.`, "error");
           }
         }
         // ── C477 — THE PROJECT IS STAMPED ON THE LINES AFTER THE POST ─────────────
@@ -1943,7 +1943,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const label = signedMonthLabel(heldPeriodML) || heldPeriodML;
       showNotification(isReviewer
         ? `${label} is signed off, so this wasn't recorded. Reopen ${label} first (Review → that month → Reopen), or use a date in a month that's still open.`
-        : `${label} is signed off, so this wasn't recorded. Your accountant can reopen it — or use a date in a month that's still open.`, "error");
+        : `${label} is signed off, so this wasn't recorded. Our team can reopen it — or use a date in a month that's still open.`, "error");
       logAudit("signed_period_booking_refused", `Refused a multi-line entry dated ${entry.date} — ${heldPeriodML} is signed off`, null, { date: entry.date, period: heldPeriodML, source: entry.source || null });
       return null;
     }
@@ -1998,7 +1998,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         });
         if (!r.ok) {
           logAudit("entry_meta_stamp_failed", `Booked the entry, but couldn't record ${[...fields, ...(refNum ? ["invoice number"] : [])].join(", ")}`, null, { entry_id: String(newId), fields, reference_number: refNum || null });
-          if (taxAmt > 0) showNotification("Recorded — but we couldn't record this invoice's sales tax for the monthly cross-check. Your accountant may see a sales-tax mismatch that isn't real.", "warning");
+          if (taxAmt > 0) showNotification("Recorded — but we couldn't record this invoice's sales tax for the monthly cross-check. Our team may see a sales-tax mismatch that isn't real.", "warning");
         }
       }
       return newId;
@@ -2206,7 +2206,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         });
         if (!r.ok) {
           logAudit("opening_supersede_failed", `Couldn't retire the previous opening entry — your starting balances may now be counted twice`, null, { entry_id: String(je.id) });
-          showNotification("Saved the new opening balances, but couldn't remove the previous ones — please tell your accountant before relying on these figures.", "error");
+          showNotification("Saved the new opening balances, but couldn't remove the previous ones — please let us know before relying on these figures.", "error");
         }
       }
       // Only once the new rows are in: deleting the old ones after a failed save would leave
@@ -2615,7 +2615,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         // out with `USING`, which yields no error and no rows — so without this, the card
         // would say "dismissed", vanish from the screen, and be back on the next load.
         const denied = !error || /row-level security|violates row-level|policy/i.test(error.message || "");
-        return { ok: false, error: denied ? "Only an accountant or admin on this company can dismiss a flag." : error.message };
+        return { ok: false, error: denied ? "Only our team can dismiss a flag." : error.message };
       }
       logAudit("anomaly_dismissed", `Anomaly dismissed: ${trimmed}${docIds.length ? ` (${docIds.length} document${docIds.length === 1 ? "" : "s"} attached)` : ""}`, null, { anomaly_id: id, reason: trimmed, evidence_doc_ids: docIds });
       await loadAnomalies(cid);
@@ -2965,13 +2965,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     if (view !== "settings" && settingsDraft) { setSettingsDraft(null); setSettingsLogoPreview(null); }
   }, [view, companyDataLoaded, loadFailures.companies]); // eslint-disable-line
 
-  // C424 — the "add your accountant" checklist step's dismissal is PER COMPANY: the key was
-  // device-wide, so dismissing it on one company dismissed it on every company this browser
-  // ever opens, and it was read once at mount and never on a switch.
-  const accountantDismissKey = (cid) => `cfai_onboard_accountant_dismissed_${cid || "none"}`;
-  const readAccountantDismissed = (cid) => { try { return localStorage.getItem(accountantDismissKey(cid)) === "1"; } catch { return false; } };
-  const [accountantDismissed, setAccountantDismissed] = useState(() => readAccountantDismissed(currentCompany?.id));
-  useEffect(() => { setAccountantDismissed(readAccountantDismissed(currentCompany?.id)); }, [currentCompany?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // C739 — the "add your accountant" checklist step is gone (the Shadow team is every client's reviewer), and its per-company dismissal with it (was C424).
   // Persist the business-type + fiscal-year answers to the company record.
   // ★★ O140/C559 — HOW THE BUSINESS FILES ITS TAXES, saved ON ITS OWN. The column arrives with
   // migration `093`; written in the same update as business_type, a database without it would
@@ -3074,7 +3068,6 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       return { ok: false, error: String(e?.message || e) };
     }
   };
-  const dismissAccountantStep = () => { try { localStorage.setItem(accountantDismissKey(currentCompany?.id), "1"); } catch {} setAccountantDismissed(true); };
   // Mark onboarding finished once the required steps are done (persist the flag).
   const completeOnboarding = async () => {
     const cid = currentCompany?.id;
@@ -3460,7 +3453,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         return [...(family.length ? family : snaps).filter(s => !have.has(String(s.id))), ...prev];
       });
       logAudit("invoice_delete_failed", `Couldn't delete ${label} — nothing was removed`, null, { attempted: items.length }, byAI ? "AI Chat" : "owner");
-      showNotification(`Couldn't delete ${label} — it's still in your books. If the month has been signed off, your accountant needs to reopen it.`, "error");
+      showNotification(`Couldn't delete ${label} — it's still in your books. If the month has been signed off, our team needs to reopen it.`, "error");
       return [];
     }
 
@@ -3475,7 +3468,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const ok = await restoreJournalEntries(allIds);
       if (!ok) {
         logAudit("invoice_restore_failed", `Couldn't restore ${label} — it is still deleted`, null, { attempted: allIds.length }, byAI ? "AI Chat" : "owner");
-        showNotification(`Couldn't undo that — ${label} is still deleted. If the month has since been signed off, your accountant needs to reopen it.`, "error");
+        showNotification(`Couldn't undo that — ${label} is still deleted. If the month has since been signed off, our team needs to reopen it.`, "error");
         return;
       }
       const back = familyOf(gone.map(r => r.snap));
@@ -3573,7 +3566,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     logAudit("asset_disposed", `${asset.vendor || "Equipment"} sold or disposed of on ${date} for ${fmtMoney(Number(proceeds) || 0)} — ${gain >= 0 ? `a gain of ${fmtMoney(gain)}` : `a loss of ${fmtMoney(-gain)}`}`, null, { asset_id: asset.id, journal_entry_id: String(jeId), proceeds: Number(proceeds) || 0, accumulated, stamped: stamp.ok });
     try { await loadAllData(); } catch {}
     showNotification(`Recorded: ${asset.vendor || "the equipment"} ${Number(proceeds) > 0 ? `sold for ${fmtMoney(Number(proceeds))}` : "disposed of"} — ${gain > 0 ? `a gain of ${fmtMoney(gain)}` : gain < 0 ? `a loss of ${fmtMoney(-gain)}` : "no gain or loss"}.`
-      + (flag.ok ? "" : " We couldn't mark it as gone, so its monthly wear and tear may keep being added — tell your accountant."), flag.ok ? "success" : "error");
+      + (flag.ok ? "" : " We couldn't mark it as gone, so its monthly wear and tear may keep being added — let us know."), flag.ok ? "success" : "error");
     return { ok: true, gain, jeId };
   };
   // ★ C723 — when the purchase of a piece of equipment is removed, the depreciation already recorded
@@ -3600,7 +3593,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       logAudit("asset_depreciation_removed", `Removed ${removed} month${removed === 1 ? "" : "s"} of wear and tear recorded for ${invoice?.vendor || "removed equipment"}${failed ? ` (${failed} couldn't be removed)` : ""}`, null, { source_entry_id: src, removed, failed });
       try { await loadAllData(); } catch {}
       showNotification(failed
-        ? `${removed} month${removed === 1 ? "" : "s"} of wear and tear for ${invoice?.vendor || "it"} ${removed === 1 ? "was" : "were"} removed too, but ${failed} couldn't be — your accountant should remove ${failed === 1 ? "it" : "them"}.`
+        ? `${removed} month${removed === 1 ? "" : "s"} of wear and tear for ${invoice?.vendor || "it"} ${removed === 1 ? "was" : "were"} removed too, but ${failed} couldn't be — our team will remove ${failed === 1 ? "it" : "them"}.`
         : `The ${removed} month${removed === 1 ? "" : "s"} of wear and tear already recorded for ${invoice?.vendor || "it"} ${removed === 1 ? "was" : "were"} removed too.`, failed ? "error" : "info");
     } catch (e) { console.warn("[asset removal] depreciation clean-up:", e?.message || e); }
   };
@@ -3686,7 +3679,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           `Reversed ${invoice.vendor || orig.description || "entry"}, but the link back to the original wasn't saved (${stamp.reason}) — a second Void on that entry would post a SECOND reversal`,
           null, { journal_entry_id: String(revId), reverses: String(origId), reason: stamp.reason });
         // Owner-facing, no jargon, and it states the consequence rather than the mechanism.
-        showNotification("Reversed — but we couldn't record that it's been reversed. Don't press Void on it again; tell your accountant.", "error");
+        showNotification("Reversed — but we couldn't record that it's been reversed. Don't press Void on it again; let us know.", "error");
       }
     }
     logAudit("entry_reversed", `Reversed ${invoice.vendor || orig.description || "entry"} · ${fmtMoney(invoice.amount || 0)}${reason ? ` — ${reason}` : ""}`,
@@ -4347,7 +4340,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const stranded = missed.reduce((t, je) => t + (je.lines || []).reduce((u, l) => u + (Number(l.debit) || 0), 0), 0);
       logAudit("prepaid_schedule_incomplete", `${inv.vendor} · ${fmtMoney(amt)} recorded as paid in advance, but ${missed.length} of ${sched.entries.length} monthly entries did not post — ${fmtMoney(stranded)} has not been spread yet`, null, { vendor: inv.vendor, amount: amt, months, missed: missed.length, stranded, capitalize_entry_id: String(capId) });
       try { await loadAllData(); } catch {}
-      showNotification(`Recorded as prepaid — but ${missed.length} of ${sched.entries.length} monthly entries couldn't be posted, so ${fmtMoney(stranded)} will stay in Prepaid until they're added. Tell your accountant.`, "error");
+      showNotification(`Recorded as prepaid — but ${missed.length} of ${sched.entries.length} monthly entries couldn't be posted, so ${fmtMoney(stranded)} will stay in Prepaid until they're added. Let us know.`, "error");
       return capId;   // the document IS recorded (the capitalization landed); what is missing is said above
     }
 
@@ -4496,7 +4489,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // again" whatever `comp.ok` was, and a retry on top of an un-rolled-back entry books the
       // purchase twice (C245's shape: a failure that cannot be retried must never be described
       // as one). The entry stays on screen because it IS in the books.
-      showNotification(`${finalInv.vendor || "That purchase"} is in your books, but we couldn't set up its cost spread and couldn't undo the entry either. Don't try again — send this to your accountant.`, "error");
+      showNotification(`${finalInv.vendor || "That purchase"} is in your books, but we couldn't set up its cost spread and couldn't undo the entry either. Don't try again — let us know and we'll sort it out.`, "error");
       return;
     }
     setInvoices(prev => prev.filter(i => i.id !== finalInv.id && String(i.db_entry_id) !== String(jeId)));
@@ -4637,7 +4630,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       logAudit("depreciation_held_source_removed", `Stopped spreading the cost of ${names.join(", ")} over time — the purchase it came from was removed or reversed`, null, { asset_ids: [...new Set(orphaned.map(r => String(r.asset_id)))], rows: orphaned.length });
       if (!depreciationHoldToldRef.current) {
         depreciationHoldToldRef.current = true;
-        showNotification(`We've stopped spreading the cost of ${names.length === 1 ? names[0] : `${names.length} purchases`} over time — the purchase ${names.length === 1 ? "it" : "they"} came from is no longer in your books. Restore that purchase to continue, or ask your accountant to remove it from your equipment list.`, "info");
+        showNotification(`We've stopped spreading the cost of ${names.length === 1 ? names[0] : `${names.length} purchases`} over time — the purchase ${names.length === 1 ? "it" : "they"} came from is no longer in your books. Restore that purchase to continue, or ask us to remove it from your equipment list.`, "info");
       }
     }
 
@@ -5638,7 +5631,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const reopenSignedPeriodAndBook = () => moneyMoves.current.run("signed-hold", () => reopenSignedPeriodAndBookOnce());
   const reopenSignedPeriodAndBookOnce = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
-    if (!isReviewer) { showNotification("Only your accountant can reopen a reviewed month.", "error"); return; }
+    if (!isReviewer) { showNotification("Only our team can reopen a reviewed month.", "error"); return; }
     const r = await reopenPeriod(held.period);
     if (!r.ok) return;   // reopenPeriod already surfaced the error
     logAudit("signed_period_reopened_for_booking", `Reopened ${held.period} to record ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date}`, null, { period: held.period, date: held.invoice?.date, vendor: held.invoice?.vendor });
@@ -5661,12 +5654,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
   const sendHeldToCPAOnce = async () => {
     const held = pendingSignedPeriodBooking; if (!held) return;
     logAudit("signed_period_sent_to_cpa", `Sent ${held.invoice?.vendor || "an entry"} dated ${held.invoice?.date} (signed ${held.period}) to accountant review`, null, { period: held.period, date: held.invoice?.date });
-    try { createNotification?.({ type: "needs_review", title: `A ${signedMonthLabel(held.period) || "reviewed-month"} item needs your accountant`, description: `${held.invoice?.vendor || "An entry"} dated ${held.invoice?.date} falls in a reviewed month — your accountant should decide how to record it.`, link_view: "review" }); } catch {}
+    try { createNotification?.({ type: "needs_review", title: `A ${signedMonthLabel(held.period) || "reviewed-month"} item needs our team`, description: `${held.invoice?.vendor || "An entry"} dated ${held.invoice?.date} falls in a reviewed month — our team will decide how to record it.`, link_view: "review" }); } catch {}
     // C373 — the row says WHY it is held, so the reviewer's screen can list it after a reload.
     const hold = partialHoldsRef.current[String(held.invoice?._queueItemId ?? "")];
     if (hold?.intakeId) markIntake(hold.intakeId, INTAKE_STATUS.HELD, { journalEntryIds: hold.ids, detail: signedPeriodHoldDetail(signedMonthLabel(held.period) || held.period) });
     setPendingSignedPeriodBooking(null);
-    showNotification("Sent to your accountant to decide.");
+    showNotification("Sent to our team to decide.");
   };
   const dismissSignedPeriodBooking = () => setPendingSignedPeriodBooking(null);
 
@@ -5687,8 +5680,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       // A query that errored returns no rows, which is indistinguishable from a company with
       // no accountant — and getting that backwards would tell an accountant-led client that
       // nobody is reviewing their books. On any doubt we keep the existing sentence.
-      if (!mem.error && Array.isArray(mem.data)) setHasAttester(companyHasAttester(mem.data));
-      else setHasAttester(true);
+      // ★ C739 — EVERY CLIENT HAS A REVIEWER: THE SHADOW TEAM (operator, 2026-11-18: "these people will not be
+      // hiring accountants … it's either them or me or a combo of both"). Nothing the owner can't answer
+      // dead-ends in "invite your accountant"; it comes to the operator's queue. (companyHasAttester kept for the record.)
+      void mem; setHasAttester(true);
       // O98 — record whether the load RAN. `[]` from a failed query and `[]` from a company
       // with no uploads are the same value and must not be the same claim.
       setIntakeLoadOk(!!ir.ok);
@@ -6065,8 +6060,8 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
             // C708 — with no accountant (and no account), "for your accountant" is a promise nobody keeps
             showNotification(hasAttester === false
               ? "Got it — we've saved your statement. Add your bank account in Settings → Your business, then drop it again and it goes straight into your books."
-              : "Got it — we've saved your statement for your accountant to add to your books.");
-            try { createNotification?.({ type:"bank_import", title:"Your statement is in", description:"Your accountant will add these transactions to your books.", link_view:"home" }); } catch {}
+              : "Got it — we've saved your statement for our team to add to your books.");
+            try { createNotification?.({ type:"bank_import", title:"Your statement is in", description:"Our team will add these transactions to your books.", link_view:"home" }); } catch {}
           }
           return;
         }
@@ -7077,7 +7072,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       const why = (gate.reasons || []).map(r => r.text).filter(Boolean).join(" ");
       showNotification(navSeat.isReviewerSeat
         ? `Payroll read — it needs a look before posting.${why ? " " + why : ""} It's waiting in Payroll.`
-        : `We've read your payroll and set it aside for your accountant to post.${why ? " " + why : ""}`,
+        : `We've read your payroll and set it aside for our team to post.${why ? " " + why : ""}`,
         "info");
     } catch(e) {
       markIntake && markIntake(pIntakeId, INTAKE_STATUS.FAILED, { detail: `payroll parse error: ${e?.message||e}` }); console.error(e);
@@ -7179,7 +7174,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
       : `Payroll posted: ${fmtMoney(imp.total_gross)} gross ✓`)
       + (stampRes.ok ? "" : " — we couldn't file it against this company's payroll history, so the next run will still need a person")
       + (replaced ? ` The ${fmtMoney(imp.total_net)} net-pay line already added from your bank statement was replaced by this, so it isn't counted twice.` : "")
-      + (replacedHeld ? ` A ${fmtMoney(imp.total_net)} net-pay line from your bank statement is still in the books too — it's in a signed-off month, so your accountant needs to remove it.` : ""));
+      + (replacedHeld ? ` A ${fmtMoney(imp.total_net)} net-pay line from your bank statement is still in the books too — it's in a signed-off month, so our team needs to remove it.` : ""));
     return true;
   };
   const routeFileToType = (type, file, { intakeId = null, documentId = null } = {}) => {
@@ -7203,7 +7198,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
     if (!navSeat.isReviewerSeat && (type === "bank_statement" || type === "qbo")) {
       setPendingImportFile({ type, file });
-      showNotification("Got it — we've saved that for your accountant to add to your books.");
+      showNotification("Got it — we've saved that for our team to add to your books.");
       return;
     }
     if (type === "bank_statement") { setView("bank"); handleBankFile(file); }
@@ -7908,17 +7903,17 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     let msg;
     if (plan.reconciliation.conclusion === "already_matched") msg = "Everything on this statement was already in your books ✓";
     else if (exceptionCount === 0 && !balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}${reconciled ? ", matched to your bank ✓" : " ✓"}`;
-    else if (balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}; the ending balance needs your accountant's look`;
-    else msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} your accountant's look`;
+    else if (balanceDiscrepancy) msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}; the ending balance needs a look from our team`;
+    else msg = `${monthName} statement handled — ${bookedCount} recorded${clearPhrase}, ${exceptionCount} need${exceptionCount === 1 ? "s" : ""} a look from our team`;
     // Cardinal-Principle safety net: if any GL/debit-credit jargon leaks, fall back to a plain line.
-    if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`;
+    if (containsOwnerJargon(msg)) msg = `${monthName} statement handled — we recorded what we could and flagged the rest for our team.`;
     // Lead with the whole-statement count (C196(3)) unless nothing happened at all.
     const composed = (wholeStatement && plan.reconciliation.conclusion !== "already_matched") ? `${wholeStatement} — ${msg}` : msg;
     // C198·3b — scan what the owner ACTUALLY reads. The check above ran on `msg` alone,
     // so anything the prepended whole-statement clause contributed went unscanned — a
     // guard applied to a fragment of the final string is a guard with a hole in it.
     return containsOwnerJargon(composed)
-      ? `${monthName} statement handled — we recorded what we could and flagged the rest for your accountant.`
+      ? `${monthName} statement handled — we recorded what we could and flagged the rest for our team.`
       : composed;
   };
 
@@ -8787,7 +8782,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         postedPaymentId = null;
       }
       showNotification(compensationFailed
-        ? `We recorded the money leaving but couldn't finish marking ${inv.vendor || "this bill"} as paid, and couldn't undo it either. Don't try again — send this to your accountant to correct.`
+        ? `We recorded the money leaving but couldn't finish marking ${inv.vendor || "this bill"} as paid, and couldn't undo it either. Don't try again — let us know and we'll correct it.`
         : "Couldn't save the payment — please try again", "error");
       try { Sentry.captureMessage("payment_persist_failure", { level: "error",
         tags: { kind: "payment_persist_failure", side },
@@ -9567,7 +9562,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   const inputStyle = { width:"100%", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"10px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" };
   const labelStyle = { display:"block", fontSize:11, color:"var(--sc-text-2)", marginBottom:6, letterSpacing:1 };
 
-  const erpCtx = { disposeAsset, giveBankAccountOwnCategory, taxAssets, filedDeadlinesPrev, estPaidThisYear, setEstPaidThisYear, estPaidPrevYear, settleStatementLine, paymentSourceGlCodes, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditTotal, readFullAuditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, setChatPrefill, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, handlePayrollFile, postPayroll, payrollCodes, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, setReconciliations, recurring, recurringNewRec, createRecurring, recordRecurringRun, removeRule: deleteChatRule, setRecurringActive, removeRecurring, removeBankAccount, persistUnknownDocPatch, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, filedDeadlines, setFiledDeadlines, loadFailures, accountsLoadOk, anomaliesLoadOk, intakeLoadOk, attachDepreciationToExistingAsset, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, saveLegalForm, applyCoaTemplate, readBankStatement, fileStatementTo, fileHeldStatementTo, saveVendorRule: persistChatRule, accountantDismissed, dismissAccountantStep, completeOnboarding, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, signoffsLoadOk, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, hasAttester, canSoloAttest: canSelfAttest({ role: userRole, hasAttester }), selfAttestAcknowledgement, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, intakeRows, reloadHeldIntake, heldQuestions, heldUnreadable, heldPartial, settleClarification, runDrain, drainStatus, mailChannel, heldInbound, refreshMailState, setupMailChannel, allowMailSender, releaseHeldInbound, ignoreHeldInbound, sendChannelMail, aiDegraded, setAiDegraded, aiBudget, budgetCopy, runShadowCalibration, shadowResult };
+  const erpCtx = { disposeAsset, giveBankAccountOwnCategory, taxAssets, filedDeadlinesPrev, estPaidThisYear, setEstPaidThisYear, estPaidPrevYear, settleStatementLine, paymentSourceGlCodes, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, CONTRACT_TYPES, aiStep, aiSuggestion, allProjects, allVendorNames, apView, applyGaapAnswer, applyMatch, arAgingLoading, arAgingNarration, arView, auditActionFilter, auditLog, auditTotal, readFullAuditLog, auditSearch, bankAccounts, bankDragOver, bankFileName, bankProcessing, bankProgress, bankStep, bankTransactions, basisMode, bookBankTransactions, bookToDb, chatBottomRef, chatHistory, setChatPrefill, chatLoading, chatOpen, checkWatchTriggers, clarificationQueue, classifyFile, coaAddDraft, coaEditDraft, coaEditingCode, coaShowAdd, companies, setCompanies, setCurrentCompany, companySettings, contacts, contractDragOver, contractProcessing, contractView, contracts, createOrUpdateContact, currentCompany, customCOA, customProjects, getAccountByRole, getAccountByCode, getAccountById, reloadAccounts, rc, rn, addCustomAccount, persistAccountEdit, deleteAccount, accountHasTransactions, customersEditDraft, customersEditingId, deleteConfirm, deleteJournalEntry, dismissMatch, docLibrary, docsFilterType, docsPreview, dragOver, fileStoreRef, fileToBase64, filteredInvoices, form, booksFilter, setBooksFilter, handleBankFile, handleBookInvoice, handleChatSend, pendingAIActions, confirmAIActions, cancelAIActions, handleContractFile, handleFileSelect, handleFormChange, handleUniversalUpload, hasUnread, inputStyle, invoices, isAILoading, labelStyle, loadAllData, loadContractsFromDB, logAudit, mainContentRef, markPaid, matchHistory, matchQueue, netIncome, notification, onNewCompany, onSignOut, onSwitchCompany, onViewChange, openingBalBalances, openingBalances, payrollDragOver, payrollImports, payrollProcessing, handlePayrollFile, postPayroll, payrollCodes, persistContact, persistContract, persistJournalEntry, persistMultiLineEntry, persistRecode, persistedView, postAllContractEntries, postContractEntry, processUploadItem, reconciliations, setReconciliations, recurring, recurringNewRec, createRecurring, recordRecurringRun, removeRule: deleteChatRule, setRecurringActive, removeRecurring, removeBankAccount, persistUnknownDocPatch, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion, persistBankAccounts, createBankAccountInline, glCash, glCashOnHand, cashGlCodes, pendingOpeningProposal, confirmOpeningFromStatement, dismissOpeningProposal, openingProposalCopy, openingDiscrepancyFlag, dismissOpeningDiscrepancy, anomalies, dismissAnomaly, anomalyComments, addAnomalyComment, filedDeadlines, setFiledDeadlines, loadFailures, accountsLoadOk, anomaliesLoadOk, intakeLoadOk, attachDepreciationToExistingAsset, aliasIndex, validateAlias, aliasExplainer, notifications, notifOpen, setNotifOpen, unreadNotifs, markNotifRead, markAllNotifsRead, clearAllNotifs, openNotification, onboardingUploadDone, companyDataLoaded, businessModalOpen, setBusinessModalOpen, saveBusinessProfile, saveLegalForm, applyCoaTemplate, readBankStatement, fileStatementTo, fileHeldStatementTo, saveVendorRule: persistChatRule, completeOnboarding, reportDateFrom, reportDateTo, reportRange, reportType, plDrill, setPlDrill, drill, setDrill, drillSel, setDrillSel, rules, runFullAI, runMatchingEngine, selectedContract, selectedInvoice, sendInvoiceDraftState, sendInvoiceShowPreview, sentInvoiceDraft, sentInvoices, session, setAiStep, setAiSuggestion, setApView, setArAgingLoading, setArAgingNarration, setArView, setAuditActionFilter, setAuditLog, setAuditSearch, setBankAccounts, setBankDragOver, setBankFileName, setBankProcessing, setBankProgress, setBankStep, setBankTransactions, setBasisMode, setChatHistory, setChatLoading, setChatOpen, setClarificationQueue, setCoaAddDraft, setCoaEditDraft, setCoaEditingCode, setCoaShowAdd, setCompanySettings, setContacts, setContractDragOver, setContractProcessing, setContractView, setContracts, setCustomProjects, setCustomersEditDraft, setCustomersEditingId, setDeleteConfirm, setDocLibrary, setDocsFilterType, setDocsPreview, setDragOver, setForm, setHasUnread, setInvoices, setIsAILoading, setMatchHistory, setMatchQueue, setNotification, setOpeningBalBalances, setOpeningBalances, cutoffDate, saveCutoffDate, postOpeningBalances, openingPosted, redoOpeningPlan, redoOpeningSetup, preCutoffActivity, assertBookable, setPayrollDragOver, setPayrollImports, setPayrollProcessing, setRecurring, setRecurringNewRec, setReportDateFrom, setReportDateTo, setReportRange, setReportType, setRules, setSelectedContract, setSelectedInvoice, setSendInvoiceDraftState, setSendInvoiceShowPreview, setSentInvoiceDraft, setSentInvoices, setSettingsDraft, setSettingsLogoPreview, setSettingsSaved, setUniversalDragOver, setUnknownDocs, setUploadQueue, setUploadedFile, setVendorFilter, setVendorsEditDraft, setVendorsEditingId, setVendorsSelectedContact, setView, setViewRaw, settingsDraft, settingsLogoPreview, settingsSaved, showNotification, storeDocument, supabase, totalExpenses, totalRevenue, universalDragOver, unknownDocs, uploadActiveRef, uploadQueue, uploadedFile, vendorFilter, vendorSummary, vendorsEditDraft, vendorsEditingId, vendorsSelectedContact, returnTo, setReturnTo, goBackFromDetail, softDeleteInvoice, softDeleteInvoices, voidInvoiceWithUndo, removeEntry, removalPlanFor, softDeleteContract, softDeleteContracts, restoreJournalEntries, dismissNotification, enterSupport, exitSupport, supportMode, view, legalTab, setLegalTab, userRole, isOwner, isAdmin, isMember, isViewer, isReviewer, navSeat, previewAsOwner, flagBookingVisibilityFailure, markBillPaid, guardImport, routeFileToType, pendingImportFile, setPendingImportFile, reconcileDroppedDocs, flagsForReview, reviewFlagSummary, reviewApprove, reviewOverride, resolveIntakeItem, controlTotals, reviewedThrough, signoffsLoadOk, ownerTrust, bankMatch, signOffPeriod, reopenPeriod, signOffReadinessFor, signoffs, hasAttester, canSoloAttest: canSelfAttest({ role: userRole, hasAttester }), selfAttestAcknowledgement, pendingSignedPeriodBooking, reopenSignedPeriodAndBook, rebookHeldIntoOpenMonth, sendHeldToCPA, dismissSignedPeriodBooking, statementExceptions, statementExceptionsLoadFailed, loadStatementExceptions, reconcileOffer, setReconcileOffer, offerReconciliation, reevaluateStatement, logIntake, markIntake, intakeRows, reloadHeldIntake, heldQuestions, heldUnreadable, heldPartial, settleClarification, runDrain, drainStatus, mailChannel, heldInbound, refreshMailState, setupMailChannel, allowMailSender, releaseHeldInbound, ignoreHeldInbound, sendChannelMail, aiDegraded, setAiDegraded, aiBudget, budgetCopy, runShadowCalibration, shadowResult };
 
   const SETTINGS_VIEWS = ["settings","team","coa","opening-balances","onboard","rules","recurring","tax1099","tax","audit"];
   // (`isPlatformAdmin` is derived once at the top of ERP, alongside the seat — C197.)
@@ -9645,7 +9640,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               {/* (b) rebook to the open month — keeps the original date on file. */}
               {optBtn(rebookHeldIntoOpenMonth, copy.rebook, "Best for a late bill you just want on the books.")}
               {/* (c) hand to the accountant — leaves it unbooked until they decide. */}
-              {optBtn(sendHeldToCPA, copy.cpa, "We'll flag it for your accountant; nothing is recorded yet.")}
+              {optBtn(sendHeldToCPA, copy.cpa, "We'll flag it for our team; nothing is recorded yet.")}
               <div style={{ display:"flex", justifyContent:"flex-end", marginTop:14 }}>
                 <button onClick={dismissSignedPeriodBooking} style={{ background:"transparent", border:"none", color:"var(--sc-text-2)", fontSize:13, cursor:"pointer", padding:"6px 4px" }}>Not now</button>
               </div>

@@ -123,5 +123,5 @@ export default function HeldLinePanel({ kind, item, inv, run, onDone }) {
       : kind === "loan" ? "Yes — it's a loan" : kind === "card" ? "Yes — a card payment" : "Yes — a move between my accounts";
     return wrap(<>{ask(q)}<button style={btn(true)} onClick={() => record()}>{yes}</button></>);
   }
-  return wrap(ask("This one needs a detail we don't have — skip it for now, or ask your accountant."));
+  return wrap(ask("This one needs a detail we don't have — skip it for now, or ask us."));
 }

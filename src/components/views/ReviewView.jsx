@@ -630,7 +630,7 @@ export default function ReviewView() {
               ? (monthSignedOff
                   ? `${signOffMonth} is signed off.`
                   : (canAttest ? `Ready to sign off ${signOffMonth}.` : "Resolve the items below (or sign off with an override)."))
-              : "Only your accountant/reviewer attests a period."}
+              : "Only our team attests a period."}
           </div>
         </div>
         {canSignOff && (

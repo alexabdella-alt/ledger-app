@@ -247,7 +247,7 @@ export function navRedirect(viewId, opts = {}) {
 
 // Plain language for the bounce. Cardinal Principle: no accounting concepts,
 // no jargon, no blame — it says who has it and where you are, and nothing else.
-export const GATED_VIEW_REDIRECT_COPY = "Your accountant looks after that part — here's your home page.";
+export const GATED_VIEW_REDIRECT_COPY = "Our team looks after that part — here's your home page.";
 
 // The demo toggle's own labels, so the copy tests can pin them.
 export const PREVIEW_AS_OWNER_ENTER_LABEL = "Preview as owner";

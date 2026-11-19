@@ -73,7 +73,8 @@ describe("C706 — a bank account is filed only under a bank-like category", () 
 describe("C706 — a view-only teammate isn't offered what will be refused", () => {
   it("no invite on Home", () => {
     const q = [{ status: "done", type: "contract" }];
-    expect(JSON.stringify(homeWaitingList({ hasAccountant: false, uploadQueue: q }))).toMatch(/Invite your accountant/);
+    // C739 — no "Invite your accountant" for anyone now (the Shadow team is every client's reviewer)
+    expect(JSON.stringify(homeWaitingList({ hasAccountant: false, uploadQueue: q }))).not.toMatch(/Invite your accountant/);
     expect(JSON.stringify(homeWaitingList({ hasAccountant: false, uploadQueue: q, canInvite: false }))).not.toMatch(/Invite your accountant/);
   });
   it("no Send an invoice on Money — a note instead; payment buttons gated on every list", () => {

@@ -118,7 +118,7 @@ const PLATFORM_ADMIN_EMAILS = ["alexabdella@gmail.com"];
 export const shouldCapitalize = (amount) => (Number(amount) || 0) > CAPITALIZE_THRESHOLD;
 
 // C681 — a view-only teammate cannot record entries (098), so cannot add documents either.
-export const VIEW_ONLY_UPLOAD_COPY = "You have view-only access to these books, so you can't add documents. The owner or their accountant can add them.";
+export const VIEW_ONLY_UPLOAD_COPY = "You have view-only access to these books, so you can't add documents. The owner can add them.";
 
 export {
   DEFAULT_CHART_OF_ACCOUNTS, PROJECTS,

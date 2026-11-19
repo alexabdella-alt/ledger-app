@@ -31,7 +31,7 @@ describe("an answered question is described by its answer", () => {
   it.each([
     [[{ kind: "booked", landed: true }], "✓ Added to your books: Ace · $50.00"],
     [[{ kind: "skipped", landed: false }], "Set aside — not added: Ace · $50.00"],
-    [[{ kind: "deferred", landed: false }], "Sent to your accountant: Ace · $50.00"],
+    [[{ kind: "deferred", landed: false }], "Sent to our team: Ace · $50.00"],
     [[{ kind: "booked", landed: false }], "⚠ Not added yet: Ace · $50.00 — open it again from Home"],
     [[], "Answered: Ace · $50.00"],
   ])("%j → %s", (answers, want) => {

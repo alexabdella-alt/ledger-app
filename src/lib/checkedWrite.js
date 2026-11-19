@@ -104,5 +104,5 @@ export async function checkedIdsUpdate({ supabase, table, ids = [], companyId, p
 export function writeFailureSentence(count = 0) {
   const n = Number(count) || 0;
   if (n <= 0) return "";
-  return ` — ${n} update${n === 1 ? "" : "s"} didn't save; your accountant should re-run this statement`;
+  return ` — ${n} update${n === 1 ? "" : "s"} didn't save; our team will re-run this statement`;
 }

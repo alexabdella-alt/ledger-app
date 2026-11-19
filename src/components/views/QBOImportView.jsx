@@ -174,7 +174,7 @@ export default function QBOImportView() {
     // they are told the safety net is missing BEFORE they need it.
     if (!batchId) {
       logAudit && logAudit("qbo_batch_record_failed", `QuickBooks import ran without a batch record — these entries cannot be undone as a group`, null, { filename: fileName, rows: rows.length });
-      showNotification("Importing — but we couldn't record this as an undoable batch, so you won't be able to reverse it in one click. Your accountant can still remove entries individually.", "error");
+      showNotification("Importing — but we couldn't record this as an undoable batch, so you won't be able to reverse it in one click. You can still remove entries individually.", "error");
     }
 
     // ★★ FILE THE SOURCE DOCUMENT. Every other intake path stores its file; this one

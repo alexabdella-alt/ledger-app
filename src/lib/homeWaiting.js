@@ -214,9 +214,8 @@ export function homeWaitingList({
   // ── INFO (an accountant's job; the owner may look) ──
   // C574 — a solo owner was told "your accountant will…" with no buttons: a dead end dressed
   // as reassurance. Without an accountant the line says so and offers the way to get one.
-  const invite = { kind: "nav", label: "Invite your accountant", view: "team" };
   const solo = !cockpit && !hasAccountant;
-  const inviteIf = () => (canInvite ? [invite] : []);   // C706
+  const inviteIf = () => [];   // C739 — no "invite your accountant": the Shadow team is every client's reviewer (was C706)
   // C641 — an owner with no accountant answers their own uncategorised bank lines.
   if (solo && ownerBankLines > 0) {
     items.push({ id: "bank_answer", urgency: WAIT.NOW, text: bankLinesWaitingCopy(ownerBankLines),
@@ -225,17 +224,17 @@ export function homeWaitingList({
   const q = uploadQueue || [];
   if (q.some((x) => x && x.status === "done" && x.type === "contract")) {
     items.push({ id: "contract_ready", urgency: WAIT.INFO,
-      text: cockpit ? "A contract is ready to record." : solo ? "We've read your agreement and saved it in Documents. Recording a contract in your books is an accountant's job — invite yours and they'll take it from there." : "We've read your agreement — your accountant will record it.",
+      text: cockpit ? "A contract is ready to record." : solo ? "We've read your agreement — our team will record it." : "We've read your agreement — our team will record it.",
       actions: cockpit ? [{ kind: "nav", label: "Open Contracts", view: "contracts" }] : solo ? inviteIf() : [] });
   }
   if (q.some((x) => x && x.status === "done" && x.type === "unknown")) {
     items.push({ id: "unknown_doc", urgency: WAIT.INFO,
-      text: cockpit ? "Some documents need accountant review." : solo ? "We couldn't tell what one of your files was. It's saved in Documents — an accountant can file it for you." : "We couldn't tell what one of your files was — your accountant will take a look.",
+      text: cockpit ? "Some documents need accountant review." : solo ? "We couldn't tell what one of your files was — it's saved in Documents, and our team will take a look." : "We couldn't tell what one of your files was — it's saved in Documents, and our team will take a look.",
       actions: cockpit ? [{ kind: "nav", label: "Open Review", view: "review" }] : solo ? [{ kind: "nav", label: "Open Documents", view: "docs", secondary: true }, ...inviteIf()] : [] });
   }
   if (!(solo && ownerBankLines > 0) && q.some((x) => x && x.status === "done" && x.type === "bank_statement" && x.result?.needsReview > 0)) {   // C641 — not twice
     items.push({ id: "bank_review", urgency: cockpit ? WAIT.NOW : WAIT.INFO,
-      text: cockpit ? "Some bank transactions need your review before they're added." : solo ? "A few things from your statement need a second look before they're added. An accountant reviews these — invite yours to finish them." : "A few things from your statement need a second look — your accountant is on it.",
+      text: cockpit ? "Some bank transactions need your review before they're added." : solo ? "A few things from your statement need a second look — our team is on it." : "A few things from your statement need a second look — our team is on it.",
       actions: cockpit ? [{ kind: "nav", label: "Review matches", view: "matching" }] : solo ? inviteIf() : [] });
   }
 

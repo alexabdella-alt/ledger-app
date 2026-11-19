@@ -29,7 +29,7 @@ describe("a file we couldn't place", () => {
   const item = { status: "done", type: "unknown", result: { document_type: "W-9", entry_needed: true } };
   it("★ the owner hears where it went, and who looks next — no 'Entry proposed'", () => {
     const t = queueItemStatusCopy(item);
-    expect(t).toBe("We couldn't tell what this is — it's saved in Documents, and your accountant will take a look.");
+    expect(t).toBe("We couldn't tell what this is — it's saved in Documents, and our team will take a look.");
     expect(containsOwnerJargon(t)).toBe(false);
     expect(queueItemStatusCopy(item, { hasAccountant: false })).toBe("We couldn't tell what this is — it's saved in Documents.");
   });

@@ -75,7 +75,7 @@ describe("★★ a held register is an outcome, not a silence", () => {
     // The gate refusing is the CORRECT result for a register that doesn't foot. But without
     // a word here a client would see the file accepted and then nothing, forever — which is
     // exactly what "handled" must not mean.
-    expect(app).toMatch(/We've read your payroll and set it aside for your accountant to post\./);
+    expect(app).toMatch(/We've read your payroll and set it aside for our team to post\./);   // C739
   });
 
   it("★ the reviewer gets the version that says where it is waiting", () => {

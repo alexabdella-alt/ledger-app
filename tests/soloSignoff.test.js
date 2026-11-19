@@ -38,10 +38,11 @@ describe("O131 — the panel stops promising a review that cannot arrive", () =>
     return (st.lines.reviewed && (st.lines.reviewed.text || st.lines.reviewed)) || "";
   };
 
-  it("★ a solo owner is told the position and the one thing that changes it", () => {
+  // ★ C739 — the Shadow team is every client's reviewer: no "add your accountant", for anyone.
+  it("★ C739 — an owner is told our team checks each month, never to go and find an accountant", () => {
     const text = String(lineFor({ hasAttester: false, reviewedThrough: null }));
-    expect(text).toMatch(/add your accountant/i);
-    expect(text).not.toMatch(/awaiting your accountant/i);
+    expect(text).toMatch(/our team checks each month/i);
+    expect(text).not.toMatch(/accountant/i);
   });
 
   it("★★ and it does NOT imply the books are wrong — nobody has reviewed them is a different fact", () => {
@@ -50,11 +51,11 @@ describe("O131 — the panel stops promising a review that cannot arrive", () =>
   });
 
   it("★ an accountant-led company is untouched — without this, the fix is just deleting a sentence", () => {
-    expect(String(lineFor({ hasAttester: true, reviewedThrough: null }))).toMatch(/awaiting your accountant/i);
+    expect(String(lineFor({ hasAttester: true, reviewedThrough: null }))).toMatch(/our team checks each month — not signed off yet/i);
   });
 
   it("★ the default is the OLD sentence, so a caller that has not checked cannot accidentally claim you have no accountant", () => {
-    expect(String(lineFor({ reviewedThrough: null }))).toMatch(/awaiting your accountant/i);
+    expect(String(lineFor({ reviewedThrough: null }))).toMatch(/our team checks each month — not signed off yet/i);
   });
 
   it("what IS signed stays a fact even with no attester left", () => {
@@ -67,12 +68,10 @@ describe("the failure direction is pinned in the caller", () => {
   const app = readFileSync("src/App.jsx", "utf8");
   const code = app.split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
 
-  it("★★ a FAILED membership query must not be read as 'you have no accountant'", () => {
-    const at = code.indexOf("companyHasAttester(mem.data)");
-    expect(at).toBeGreaterThan(-1);
-    const around = code.slice(at - 200, at + 120);
-    expect(around).toContain("!mem.error");                 // the error is checked…
-    expect(code.slice(at, at + 160)).toContain("setHasAttester(true)");  // …and doubt keeps the old sentence
+  it("★★ C739 — nobody is ever told 'you have no accountant': every client's reviewer is the Shadow team", () => {
+    // was: a failed membership read kept the 'has one' sentence (O131). Now it is unconditional.
+    expect(code).toContain("void mem; setHasAttester(true);");
+    expect(code).not.toContain("setHasAttester(companyHasAttester(mem.data))");
   });
 });
 
@@ -124,7 +123,7 @@ describe("O131 — a self-signed month is not reported as an accountant's review
   it("★★ says WHO signed it — the whole value of a sign-off is who stood behind it", () => {
     const t = lineFor({ reviewedThrough: "2026-03", selfSigned: true, hasAttester: false });
     expect(t).toMatch(/yourself/i);
-    expect(t).toMatch(/no accountant has reviewed/i);
+    expect(t).toMatch(/our team hasn't reviewed them yet/i);   // C739
   });
 
   it("★ and a real review still reads as one — without this, the fix is just relabelling everything", () => {
@@ -133,10 +132,10 @@ describe("O131 — a self-signed month is not reported as an accountant's review
     expect(t).not.toMatch(/yourself/i);
   });
 
-  it("the unsigned solo line now offers BOTH routes, since signing is one of them", () => {
+  it("C739 — the unsigned line, solo or not, says our team checks each month", () => {
     const t = lineFor({ reviewedThrough: null, hasAttester: false });
-    expect(t).toMatch(/sign them off yourself/i);
-    expect(t).toMatch(/add your accountant/i);
+    expect(t).toMatch(/our team checks each month/i);   // C739 — no routes to choose between: our team checks
+    expect(t).not.toMatch(/accountant/i);
   });
 });
 

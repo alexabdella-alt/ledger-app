@@ -85,7 +85,8 @@ describe("★ notifications and the trust panel", () => {
     expect(app).toMatch(/clearNotificationType\("anomaly"\)/);
     expect(app).not.toMatch(/due in \$\{nextDue\.days\} day\$\{nextDue\.days === 1 \? "" : "s"\}\$\{amt\}`, description/);
   });
-  it("a solo owner isn't told an accountant is looking", () => {
-    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).toMatch(/hasAttester === false \? "ask the assistant about it, or invite your accountant\." : "your accountant is taking a look\."/);
+  it("C739 — unusual activity: 'our team is taking a look' for every owner (no accountant to invite)", () => {
+    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).toMatch(/"our team is taking a look\."/);
+    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).not.toMatch(/invite your accountant/);
   });
 });

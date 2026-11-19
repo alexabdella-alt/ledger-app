@@ -105,7 +105,7 @@ describe("selection rules", () => {
     const r = planRow(old, { now: NOW });
     expect(r.action).toBe(DRAIN_ACTION.HOLD);
     expect(r.reason).toMatch(/gave_up_after_36h/);
-    expect(r.detail).toMatch(/handed to your accountant/);
+    expect(r.detail).toMatch(/handed to our team/);
   });
 
   it("the give-up box is GENEROUS on purpose — 12 hours of legitimate waiting still picks", () => {

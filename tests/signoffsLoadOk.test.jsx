@@ -33,7 +33,7 @@ describe("C410 — a sign-off read that did not run", () => {
     expect(t.lines.reviewed.signed).toBe(false);
     expect(t.overall).not.toBe("all_clear");
     // and a read that RAN with nothing signed keeps the honest "awaiting" sentence
-    expect(ownerTrustState({ ...base, signoffsChecked: true, reviewedThrough: null, hasAttester: true }).lines.reviewed.text).toMatch(/Awaiting your accountant/);
+    expect(ownerTrustState({ ...base, signoffsChecked: true, reviewedThrough: null, hasAttester: true }).lines.reviewed.text).toMatch(/not signed off yet/);   // C739
   });
   it("the Reports line says it could not check rather than 'nobody has reviewed'", () => {
     expect(reportAttestationLine({ checked: false })).toMatch(/couldn't check which months have been signed off/);

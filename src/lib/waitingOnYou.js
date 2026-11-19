@@ -241,7 +241,7 @@ export function deferredToAccountantCards(intakeRows = [], { uploadQueue = [] } 
 // gone on reload, with the intake row saying "0 of 1 saved". The row now says WHY, the
 // reviewer sees it here, and loading it re-raises the same decision for someone who can
 // reopen the month.
-export const SIGNED_PERIOD_HOLD_PREFIX = "held out of a signed-off month, sent to your accountant: ";
+export const SIGNED_PERIOD_HOLD_PREFIX = "held out of a signed-off month, sent to our team: ";
 export const signedPeriodHoldDetail = (period) => `${SIGNED_PERIOD_HOLD_PREFIX}${period || "a signed month"}`;
 
 export function signedPeriodHoldCards(intakeRows = [], { uploadQueue = [] } = {}) {
@@ -265,7 +265,7 @@ export function signedPeriodHoldCards(intakeRows = [], { uploadQueue = [] } = {}
 }
 
 // The sentence C367's settle writes. Kept here (the reader) and imported by the writer.
-export const DEFERRED_DETAIL = "set aside for your accountant after a question";
+export const DEFERRED_DETAIL = "set aside for our team after a question";
 
 // Everything on Review that is waiting on a person AND has a tool to open. Each entry is
 // {kind, goTo, goToLabel, …} or {kind, action: "reload", intake_id, …}; the screen renders

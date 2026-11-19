@@ -160,8 +160,8 @@ describe("(8) plain-language pass — the 'knows nothing' bar", () => {
       const c = statementExceptionCopy(reason);
       expect(c.length).toBeGreaterThan(20);
       expect(containsOwnerJargon(c)).toBe(false);
-      expect(c).toMatch(/accountant|recorded|label|connect|sort out/i);   // always an outcome
+      expect(c).toMatch(/our team|recorded|label|connect|sort out/i);   // always an outcome (C739 — the Shadow team)
     }
-    expect(statementExceptionCopy("something_new")).toMatch(/accountant/i);
+    expect(statementExceptionCopy("something_new")).toMatch(/our team/i);
   });
 });

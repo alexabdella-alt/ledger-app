@@ -131,8 +131,8 @@ describe("writeFailureSentence — the owner-facing outcome addendum", () => {
     expect(writeFailureSentence()).toBe("");
   });
   it("plain-language sentence when writes failed (singular + plural)", () => {
-    expect(writeFailureSentence(1)).toBe(" — 1 update didn't save; your accountant should re-run this statement");
-    expect(writeFailureSentence(3)).toBe(" — 3 updates didn't save; your accountant should re-run this statement");
+    expect(writeFailureSentence(1)).toBe(" — 1 update didn't save; our team will re-run this statement");
+    expect(writeFailureSentence(3)).toBe(" — 3 updates didn't save; our team will re-run this statement");
   });
   it("appends to a pipeline outcome line and stays jargon-free", () => {
     const outcome = "March statement handled — 13 recorded, matched to your bank ✓";
@@ -368,7 +368,7 @@ describe("★★ the payment compensation is checked, and says what it left behi
     // Retrying would post a second payment movement on top of the orphan.
     const msg = code.slice(code.indexOf("showNotification(compensationFailed"));
     expect(msg.slice(0, 500)).toMatch(/Don't try again/);
-    expect(msg.slice(0, 500)).toMatch(/send this to your accountant/);
+    expect(msg.slice(0, 500)).toMatch(/let us know and we'll correct it/);   // C739 — the Shadow team, not 'your accountant'
     // the ordinary failure keeps its retry wording — the two paths are genuinely different
     expect(msg.slice(0, 500)).toMatch(/Couldn't save the payment — please try again/);
   });

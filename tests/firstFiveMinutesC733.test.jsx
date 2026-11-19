@@ -29,7 +29,7 @@ describe("the setup card for a brand-new company", () => {
     const fold = h.indexOf("data-onboarding-optional");
     for (const k of ["biz", "upload", "opening"]) expect(h.indexOf(`data-onboarding-step="${k}"`)).toBeLessThan(fold);
     expect(h.indexOf("Teach us your vendors")).toBeGreaterThan(fold);
-    expect(h.indexOf(`data-onboarding-step="accountant"`)).toBeGreaterThan(fold);
+    expect(h).not.toContain(`data-onboarding-step="accountant"`);   // C739 — the accountant step is gone
     expect(h).not.toContain("Knock these out");
   });
   it("once the business is described, the upload is next", () => {

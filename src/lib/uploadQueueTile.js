@@ -153,7 +153,7 @@ export function queueItemStatusCopy(item = {}, { cockpit = false, hasAccountant 
   if (st === "done" && item.type === "unknown" && item.result) {
     if (cockpit) return `⚠ ${item.result.document_type || "Unknown"} · ${item.result.entry_needed ? "Entry proposed — needs review" : "No entry needed — flagged for review"}`;
     return hasAccountant
-      ? "We couldn't tell what this is — it's saved in Documents, and your accountant will take a look."
+      ? "We couldn't tell what this is — it's saved in Documents, and our team will take a look."
       : "We couldn't tell what this is — it's saved in Documents.";
   }
   return null;

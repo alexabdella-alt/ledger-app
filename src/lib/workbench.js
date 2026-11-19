@@ -96,20 +96,20 @@ export function openingMismatchCopy({ diff = 0, explainedCount = 0, accountName 
     return `${accountName}: the ${gap} difference is explained by ${n} check${n === 1 ? "" : "s"} you wrote that ${n === 1 ? "hasn't" : "haven't"} been cashed yet ✓`;
   }
   return `${accountName}: your records and this statement start ${gap} apart, and we can't yet explain why. `
-    + `Nothing has been changed — your accountant should take a look.`;
+    + `Nothing has been changed — our team will take a look.`;
 }
 
 // Statement-exception card copy — what the automatic run could not finish, said so a
 // reader with zero accounting knowledge understands what to DO.
 export const STATEMENT_EXCEPTION_COPY = {
-  low_confidence: "We weren't sure what this payment was for, so we left it for your accountant to label.",
-  signed_period: "This is dated in a month your accountant has already closed, so we didn't add it. They'll decide where it belongs.",
-  unmatched: "We couldn't tell which bill this payment was for, so we left it for your accountant to connect.",
-  book_failed: "We couldn't record this one automatically. Nothing was saved for it — your accountant will add it.",
-  balance_discrepancy: "The ending amount on this statement doesn't match your books yet. Nothing was changed — your accountant will sort out the difference.",
+  low_confidence: "We weren't sure what this payment was for, so we left it for our team to label.",
+  signed_period: "This is dated in a month that's already been closed, so we didn't add it. Our team will decide where it belongs.",
+  unmatched: "We couldn't tell which bill this payment was for, so we left it for our team to connect.",
+  book_failed: "We couldn't record this one automatically. Nothing was saved for it — our team will add it.",
+  balance_discrepancy: "The ending amount on this statement doesn't match your books yet. Nothing was changed — our team will sort out the difference.",
 };
 export function statementExceptionCopy(reason) {
-  return STATEMENT_EXCEPTION_COPY[reason] || "This one needs your accountant's eyes before we record it.";
+  return STATEMENT_EXCEPTION_COPY[reason] || "This one needs a look from our team before we record it.";
 }
 
 // ── C196(1) — OUTSTANDING-CHAIN AWARENESS IN THE SORT-OUT LIST ───────────────

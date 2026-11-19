@@ -238,7 +238,7 @@ describe("(d) owner seat renders at most ONE muted line, never a card list", () 
     const line = ownerAnomalyLine(anom("low", 5));
     expect(typeof line).toBe("string");
     expect(line.split("\n")).toHaveLength(1);
-    expect(line).toBe("5 small things noted — your accountant will look them over.");
+    expect(line).toBe("5 small things noted — our team will look them over.");
   });
 
   it("nothing open → nothing said", () => {
@@ -248,12 +248,12 @@ describe("(d) owner seat renders at most ONE muted line, never a card list", () 
   it("HIGH is left to the trust panel — no second statement of the same thing", () => {
     expect(ownerAnomalyLine(anom("high", 3))).toBe(null);
     expect(ownerAnomalyLine([...anom("high", 2), ...anom("low", 1)]))
-      .toBe("One small thing noted — your accountant will look it over.");
+      .toBe("One small thing noted — our team will look it over.");
   });
 
   it("MEDIUM reads calm, and drops 'small'", () => {
-    expect(ownerAnomalyLine(anom("medium", 1))).toBe("One thing noted — your accountant will look it over.");
-    expect(ownerAnomalyLine([...anom("medium", 1), ...anom("low", 2)])).toBe("3 things noted — your accountant will look them over.");
+    expect(ownerAnomalyLine(anom("medium", 1))).toBe("One thing noted — our team will look it over.");
+    expect(ownerAnomalyLine([...anom("medium", 1), ...anom("low", 2)])).toBe("3 things noted — our team will look them over.");
   });
 
   it("never alarms and never counts cards", () => {

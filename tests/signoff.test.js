@@ -45,7 +45,7 @@ describe("reportAttestationLine — one honest line on every report", () => {
   });
   it("★ a self-signed month says so — 'you signed it' and 'an accountant reviewed it' are different facts (C272)", () => {
     expect(reportAttestationLine({ reviewedThrough: "2026-07", selfSigned: true, monthLabel }))
-      .toMatch(/^Signed off through July 2026 by you — no accountant has reviewed them\./);
+      .toMatch(/^Signed off through July 2026 by you\./);   // C739 — still says who signed; no 'accountant'
   });
   it("the Reports screen renders it from the sign-off rows, on every report", () => {
     const src = fs.readFileSync(new URL("../src/components/views/ReportsView.jsx", import.meta.url), "utf8");

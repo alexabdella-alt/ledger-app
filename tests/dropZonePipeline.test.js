@@ -91,11 +91,11 @@ describe("(a1) the owner is told the OUTCOME, in their own words", () => {
   });
   it("a partial run splits what happened from what's waiting on a human", () => {
     const c = dropZoneOutcomeCopy({ total: 21, booked: 16, exceptions: 5, reconciled: false });
-    expect(c).toBe("16 added to your books — 5 need your accountant's eyes first.");
+    expect(c).toBe("16 added to your books — 5 need a look from our team first.");
     expect(containsOwnerJargon(c)).toBe(false);
   });
   it("singular is grammatical, and an empty parse is admitted rather than dressed up", () => {
-    expect(dropZoneOutcomeCopy({ total: 3, booked: 2, exceptions: 1 })).toContain("1 needs your accountant's eyes");
+    expect(dropZoneOutcomeCopy({ total: 3, booked: 2, exceptions: 1 })).toContain("1 needs a look from our team");
     expect(dropZoneOutcomeCopy({ total: 1, booked: 1, exceptions: 0, reconciled: true })).toContain("All 1 transaction from your statement is in your books");
     const empty = dropZoneOutcomeCopy({ total: 0 });
     expect(empty).toMatch(/couldn't find any transactions/i);
@@ -190,7 +190,7 @@ describe("C198·2b — the queue line tells the pipeline's truth", () => {
 
   it("★ the stale stash sentence is UNREACHABLE for a pipeline result", () => {
     const branchAt = dash.indexOf('item.result.to === "pipeline" ? (');
-    const fallbackAt = dash.indexOf("We've got your statement — your accountant will add these to your books.");
+    const fallbackAt = dash.indexOf("We've got your statement — our team will add these to your books.");
     expect(branchAt).toBeGreaterThan(-1);
     expect(fallbackAt).toBeGreaterThan(branchAt);      // the pipeline branch is tested FIRST…
     // …and the fallback is guarded by txnCount == null, which a pipeline result never sets.
@@ -224,7 +224,7 @@ describe("C198·2b — 'already checked' is a different fact from 'just checked'
 
   it("with exceptions outstanding, NEITHER clause appears (nothing is settled yet)", () => {
     const c = dropZoneOutcomeCopy({ total: 21, booked: 16, exceptions: 5, reconciled: false, alreadyReconciled: true });
-    expect(c).toBe("16 added to your books — 5 need your accountant's eyes first.");
+    expect(c).toBe("16 added to your books — 5 need a look from our team first.");
   });
 
   it("the flag is DERIVED from real coverage, not guessed", () => {

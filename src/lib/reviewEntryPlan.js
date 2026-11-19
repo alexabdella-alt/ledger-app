@@ -8,7 +8,7 @@ export function reviewEntryPlan(lines = [], { cashCodes = [], cashCode = null } 
   const dr = live.filter((l) => r2(l.debit) > 0), cr = live.filter((l) => r2(l.credit) > 0);
   const totalDr = r2(dr.reduce((s, l) => s + r2(l.debit), 0)), totalCr = r2(cr.reduce((s, l) => s + r2(l.credit), 0));
   if (!dr.length || !cr.length || totalDr !== totalCr) {
-    return { mode: "refuse", why: "That proposed entry doesn't balance, so it wasn't posted. Edit it, or ask your accountant." };
+    return { mode: "refuse", why: "That proposed entry doesn't balance, so it wasn't posted. Edit it, or ask us." };
   }
   const cash = new Set([...(cashCodes || []), cashCode].filter((c) => c != null).map(String));
   if (live.length === 2 && dr.length === 1 && cr.length === 1) {

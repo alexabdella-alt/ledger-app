@@ -245,7 +245,7 @@ describe("(3) reviewed line reflects the sign-off state honestly", () => {
   it("never signed off → honest 'awaiting', no fake month/green", () => {
     const s = ownerTrustState({ ...base, reviewedThrough: null });
     expect(s.lines.reviewed.signed).toBe(false);
-    expect(s.lines.reviewed.text).toMatch(/awaiting/i);
+    expect(s.lines.reviewed.text).toMatch(/not signed off yet/i);   // C739 — 'Our team checks each month — not signed off yet.'
   });
   it("monthLabel formats YYYY-MM; null on garbage", () => {
     expect(monthLabel("2026-01")).toBe("January 2026");
@@ -265,7 +265,7 @@ describe("open HIGH anomaly → 'Nothing wrong' cannot be green (O83)", () => {
     expect(s.lines.correct.state).toBe("attention");
     expect(s.nets.noAnomalies).toBe(false);
     expect(s.lines.correct.text).toMatch(/unusual/i);
-    expect(s.lines.correct.text).toMatch(/accountant/i);
+    expect(s.lines.correct.text).toMatch(/our team/i);   // C739
   });
   it("singular copy for a single anomaly", () => {
     const s = ownerTrustState({ ...base, openHighAnomalies: 1 });

@@ -194,6 +194,6 @@ export function reportAttestationLine({ reviewedThrough = null, selfSigned = fal
   if (!reviewedThrough) return "No month has been signed off yet — these figures haven't been reviewed by anyone.";
   const label = monthLabel(reviewedThrough) || reviewedThrough;
   return selfSigned
-    ? `Signed off through ${label} by you — no accountant has reviewed them. Later months are still being checked.`
+    ? `Signed off through ${label} by you. Later months are still being checked.`
     : `Reviewed and signed off through ${label}. Later months are still being checked.`;
 }

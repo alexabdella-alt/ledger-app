@@ -35,41 +35,38 @@ describe("C574 — an owner with no accountant is never told 'your accountant wi
     { status: "done", type: "unknown" },
     { status: "done", type: "bank_statement", result: { needsReview: 2 } },
   ];
-  it("each accountant-shaped item on Home offers the way to get one, instead of a promise", () => {
-    const items = homeWaitingList({ uploadQueue: queue, hasAccountant: false });
-    expect(items).toHaveLength(3);
-    for (const it of items) {
-      expect(it.text, it.id).not.toMatch(/your accountant (will|is on)/);
-      expect(it.actions.some((a) => a.view === "team" && a.label === "Invite your accountant"), it.id).toBe(true);
+  // ★ C739 — no customer-facing accountant: the Shadow team is every client's reviewer, so these
+  // items say "our team" and offer no "Invite your accountant" — whatever the membership says.
+  it("★ C739 — the accountant-shaped items say 'our team' and never offer an invite", () => {
+    for (const hasAccountant of [true, false]) {
+      const items = homeWaitingList({ uploadQueue: queue, hasAccountant });
+      expect(items).toHaveLength(3);
+      for (const it of items) {
+        expect(it.text, it.id).toMatch(/our team/);
+        expect(it.text, it.id).not.toMatch(/accountant/i);
+        expect(JSON.stringify(it.actions), it.id).not.toMatch(/Invite your accountant/);
+      }
     }
-    expect(items.find((i) => i.id === "unknown_doc").actions.some((a) => a.view === "docs")).toBe(true);
-  });
-  it("with an accountant, the wording and the (empty) actions are unchanged", () => {
-    const items = homeWaitingList({ uploadQueue: queue, hasAccountant: true });
-    expect(items.find((i) => i.id === "contract_ready").text).toBe("We've read your agreement — your accountant will record it.");
-    for (const it of items) expect(it.actions).toEqual([]);
-  });
-  it("the default (not yet known) is 'has one' — we never claim they have none on a failed read", () => {
-    expect(homeWaitingList({ uploadQueue: queue }).find((i) => i.id === "contract_ready").actions).toEqual([]);
+    expect(homeWaitingList({ uploadQueue: queue, hasAccountant: true }).find((i) => i.id === "contract_ready").text).toBe("We've read your agreement — our team will record it.");
   });
   it("the reviewer seat keeps its own actions either way", () => {
     expect(homeWaitingList({ uploadQueue: queue, cockpit: true, hasAccountant: false }).find((i) => i.id === "contract_ready").actions[0].view).toBe("contracts");
   });
   it("unusual activity, the statement outcome and the solo sign-off say what to do", () => {
-    expect(ownerAnomalyLine([{ severity: "medium" }], { hasAccountant: false })).toMatch(/ask the assistant about it, or invite your accountant/);
-    expect(ownerAnomalyLine([{ severity: "medium" }])).toMatch(/your accountant will look it over/);
+    expect(ownerAnomalyLine([{ severity: "medium" }], { hasAccountant: false })).toMatch(/our team will look it over/);   // C739
+    expect(ownerAnomalyLine([{ severity: "medium" }])).toMatch(/our team will look it over/);
     expect(dropZoneOutcomeCopy({ total: 5, booked: 3, exceptions: 2, hasAccountant: false, answerable: 2 })).toMatch(/a quick answer from you — they're at the top of Home/);   // C708 — C641 answers them on Home
     expect(dropZoneOutcomeCopy({ total: 0, hasAccountant: false })).toMatch(/as a CSV/);
     const solo = ownerSignOffBlockers([{ net: "accuracy" }, { net: "mystery" }], { hasAccountant: false });
-    for (const s of solo) expect(s).not.toMatch(/your accountant can see/);
-    expect(ownerSignOffBlockers([{ net: "accuracy" }])[0]).toMatch(/your accountant can see which/);
+    for (const s of solo) expect(s).not.toMatch(/accountant/i);   // C739
+    expect(ownerSignOffBlockers([{ net: "accuracy" }])[0]).toMatch(/our team can see which/);
   });
   it("the screens pass it through", () => {
     const dash = readFileSync("src/components/views/DashboardView.jsx", "utf8");
     expect(dash).toMatch(/hasAccountant: hasAttester !== false/);
     // C729 — the owner's anomaly note moved off Home into the books panel on Reports, which reads hasAttester (C725)
     expect(dash).not.toMatch(/ownerAnomalyLine\(anomalies/);
-    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).toMatch(/hasAttester === false \? "ask the assistant about it, or invite your accountant\."/);
+    expect(readFileSync("src/lib/ownerTrust.js", "utf8")).not.toMatch(/invite your accountant/);   // C739
     expect(dash).toMatch(/alreadyReconciled:!!item\.result\.alreadyReconciled, hasAccountant \}\)/);
     const trust = readFileSync("src/components/views/TrustPanel.jsx", "utf8");
     expect((trust.match(/hasAccountant: false/g) || []).length).toBe(2);

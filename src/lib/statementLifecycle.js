@@ -350,7 +350,7 @@ export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, rec
   const t = Math.max(0, Number(total) || 0);
   const n = Math.max(0, Number(exceptions) || 0);
   const b = Math.max(0, Number(booked) || 0);
-  if (!t) return hasAccountant ? "We couldn't find any transactions on that statement — your accountant will take a look."
+  if (!t) return hasAccountant ? "We couldn't find any transactions on that statement — our team will take a look."
     : "We couldn't find any transactions on that statement. Check it's a bank statement — or download it from your bank as a CSV and drop that in.";
   if (n === 0) {
     const tail = reconciled ? ", and everything matches your bank to the penny."
@@ -365,10 +365,10 @@ export function dropZoneOutcomeCopy({ total = 0, booked = 0, exceptions = 0, rec
     const a = answerable == null ? n : Math.max(0, Math.min(n, Number(answerable) || 0));
     const rest = n - a;
     const ask = a ? ` ${a} need${a === 1 ? "s" : ""} a quick answer from you — they're at the top of Home.` : "";
-    const held = rest ? ` ${rest} couldn't be matched to a bill or saved, and ${rest === 1 ? "is" : "are"} kept for a closer look — an accountant can finish ${rest === 1 ? "it" : "them"} (invite one from Settings → Team).` : "";
+    const held = rest ? ` ${rest} couldn't be matched to a bill or saved, and ${rest === 1 ? "is" : "are"} kept for a closer look — our team will finish ${rest === 1 ? "it" : "them"}.` : "";
     return `${b} added to your books.${ask}${held}`;
   }
-  return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} your accountant's eyes first.`;
+  return `${b} added to your books — ${n} need${n === 1 ? "s" : ""} a look from our team first.`;
 }
 
 // (a3) THE STASH THAT SURVIVES. `pendingImportFile` is in-memory React state, so a

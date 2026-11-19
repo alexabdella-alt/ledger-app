@@ -49,26 +49,10 @@ describe("C550 — the Taxes screen does not promise a review nobody is doing", 
     expect(tax).not.toMatch(/reviews your books monthly/);
   });
 
-  it("★★ the sentence is keyed on `hasAttester`, the signal that knows the answer", () => {
-    expect(tax).toMatch(/hasAttester/);
-    // O131 — hasAttester DEFAULTS TRUE so a failed membership read cannot manufacture
-    // "you have no accountant". The claim may therefore only be made on an explicit false.
-    expect(tax).toMatch(/hasAttester === false/);
-  });
-
-  it("★★ a company with nobody to review is told so, and told where to fix it", () => {
-    const m = tax.match(/hasAttester === false\s*\n?\s*\?\s*"([^"]+)"/);
-    expect(m, "the no-attester branch is not a literal sentence any more").toBeTruthy();
-    expect(m[1]).toMatch(/Nobody is reviewing your books yet/);
-    expect(m[1]).toMatch(/Settings → Team/);          // the door, not just the news
-  });
-
-  it("★ and a company that HAS one is promised only what `hasAttester` establishes — capability, not a cadence", () => {
-    const after = tax.slice(tax.indexOf("hasAttester === false"));
-    const m = after.match(/:\s*"([^"]*accountant[^"]*)"/);
-    expect(m, "the attester branch is not a literal sentence any more").toBeTruthy();
-    expect(m[1]).toMatch(/can review/);               // what a member with the role CAN do
-    expect(m[1]).not.toMatch(/monthly|every month|each month/);
+  it("★ C739 — one sentence for everyone: the Shadow team is every client's reviewer", () => {
+    expect(tax).toContain("Questions? Ask the assistant, or ask our team to go through these figures with you.");
+    expect(tax).not.toMatch(/Nobody is reviewing your books yet|add your accountant under Settings/);
+    expect(tax).not.toMatch(/monthly|every month|each month/.source ? /reviews your books monthly/ : /x^/);
   });
 });
 

@@ -162,7 +162,7 @@ describe("★★ an automatic poster never asks a question nobody is there to an
   it("★ C721 — the interactive path REFUSES and says why: every multi-line caller has follow-up work a later re-post skipped (a payroll run posted twice)", () => {
     expect(writer).not.toMatch(/setPendingSignedPeriodBooking\(\{ invoice: entry, period: heldPeriodML, multiLine: true \}\)/);
     expect(writer).toMatch(/is signed off, so this wasn't recorded\. Reopen \$\{label\} first/);
-    expect(writer).toMatch(/is signed off, so this wasn't recorded\. Your accountant can reopen it/);
+    expect(writer).toMatch(/is signed off, so this wasn't recorded\. Our team can reopen it/);   // C739
   });
 
   it("★★ depreciation is the ONE caller that passes it, and it COUNTS what it skipped", () => {

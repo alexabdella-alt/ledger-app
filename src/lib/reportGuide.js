@@ -44,7 +44,7 @@ export function ownerReportTabs({ showMore = false, current = null } = {}) {
 export const REPORT_GUIDE = {
   pl: "Money in versus money out for the dates you pick — the bottom line is your profit (or loss).",
   balance: "What the business owns and what it owes, on one day. What's left over is what the business is worth on paper.",
-  trial: "Every category's running balance — the accountant's check that everything adds up.",
+  trial: "Every category's running balance — the bookkeeper's check that everything adds up.",
   araging: "Customers who haven't paid you yet, grouped by how late they are.",
   apaging: "Bills you haven't paid yet, grouped by how soon or how late they're due.",
   kpis: "The handful of numbers that tell you how the business is doing at a glance.",
@@ -59,4 +59,4 @@ export const BASIS_LABELS = {
   accrual: { button: "When billed", subtitle: "Counted when billed" },
   cash: { button: "When paid", subtitle: "Counted when paid" },
 };
-export const BASIS_EXPLAINER = "\"When billed\" counts a sale or a bill on its invoice date. \"When paid\" counts it on the day the money actually moved. Your accountant may ask for either.";
+export const BASIS_EXPLAINER = "\"When billed\" counts a sale or a bill on its invoice date. \"When paid\" counts it on the day the money actually moved. Your tax preparer may ask for either.";

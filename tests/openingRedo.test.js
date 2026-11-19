@@ -36,7 +36,7 @@ describe("★★ what it refuses, and why each is different", () => {
     const r = planOpeningRedo({ canEdit: true, openingPosted: true, cutoffDate: "2026-01-15", signedPeriodOf: () => "January 2026" });
     expect(r.reason).toBe(REDO_REFUSED.SIGNED_PERIOD);
     expect(r.message).toMatch(/January 2026/);
-    expect(r.message).toMatch(/They'd need to reopen that month/);
+    expect(r.message).toMatch(/Our team would need to reopen that month/);
   });
 });
 

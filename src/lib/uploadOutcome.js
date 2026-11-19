@@ -36,7 +36,7 @@ function answeredPhrase(r = {}) {
   const a = Array.isArray(r.answers) ? r.answers : [];
   const who = `${r.reviewVendor ? `: ${r.reviewVendor}` : ""}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`;
   if (a.some((x) => (x.kind === "booked" || x.kind === "attached") && x.landed)) return `✓ Added to your books${who}`;
-  if (a.some((x) => x.kind === "deferred")) return `Sent to your accountant${who}`;
+  if (a.some((x) => x.kind === "deferred")) return `Sent to our team${who}`;
   if (a.length && a.every((x) => x.kind === "skipped")) return `Set aside — not added${who}`;
   if (a.length) return `⚠ Not added yet${who} — open it again from Home`;
   return `Answered${who}`;

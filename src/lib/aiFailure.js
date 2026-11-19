@@ -95,7 +95,7 @@ export function classifyAIFailure({ status = null, body = null, message = "" } =
     // ★ AN UNRECOGNISED FAILURE IS REPORTED AS UNRECOGNISED. Guessing "we'll keep trying"
     // on something we cannot classify is how a document sits in a retry loop forever
     // (`intakeDrain`'s doctrine: unrecognised is PERMANENT, the visible direction).
-    owner: "We couldn't read this one, and we're not sure why. Your accountant will take a look — nothing has been lost.",
+    owner: "We couldn't read this one, and we're not sure why. Our team will take a look — nothing has been lost.",
     operator: `Unclassified AI failure${s ? ` (${s})` : ""}: ${message || "(no message)"}`,
   };
 }
@@ -135,6 +135,6 @@ export function chatFailureCopy(err) {
     : f.kind === AI_FAILURE.PROVIDER_BUSY ? "I couldn't reach the answering service just now — it's busy or the connection dropped. Your question is still in the box; try again in a moment."
     : f.kind === AI_FAILURE.OUT_OF_CREDIT ? "I can't answer questions right now — this is on our side, not you. Your books are safe; try again later."
     : f.kind === AI_FAILURE.NOT_CONFIGURED ? "I can't answer questions right now because something on our side needs fixing. Your books are safe; try again later."
-    : "I couldn't answer that just now, and I'm not sure why. Your question is still in the box — try again, and if it keeps happening, tell your accountant.";
+    : "I couldn't answer that just now, and I'm not sure why. Your question is still in the box — try again, and if it keeps happening, let us know.";
   return { kind: f.kind, owner, operator: f.operator || String(err?.message || err || ""), retryable: !!f.retryable };
 }

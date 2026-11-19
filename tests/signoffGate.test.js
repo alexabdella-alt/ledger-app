@@ -185,7 +185,7 @@ describe("loop tie — the write gate and the owner TrustPanel can't disagree", 
     // before sign-off: awaiting
     const before = ownerTrustState({ ...ownerBase, bankMatch: MATCHED, reviewedThrough: null });
     expect(before.lines.reviewed.signed).toBe(false);
-    expect(before.lines.reviewed.text).toMatch(/awaiting/i);
+    expect(before.lines.reviewed.text).toMatch(/not signed off yet/i);   // C739
     // after sign-off through 2026-07 (what signOffPeriod persists) → owner panel reflects it
     const after = ownerTrustState({ ...ownerBase, bankMatch: MATCHED, reviewedThrough: "2026-07" });
     expect(after.lines.reviewed.signed).toBe(true);

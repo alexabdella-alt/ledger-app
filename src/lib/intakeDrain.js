@@ -93,7 +93,7 @@ export function planRow(row = {}, { now, opts = {} } = {}) {
   if (age >= o.giveUpHours) {
     return { action: DRAIN_ACTION.HOLD,
              reason: `gave_up_after_${o.giveUpHours}h`,
-             detail: `Still not processed ${Math.floor(age)} hours after it arrived — handed to your accountant rather than retried again.` };
+             detail: `Still not processed ${Math.floor(age)} hours after it arrived — handed to our team rather than retried again.` };
   }
 
   // Too soon since the last attempt. A stale `processing` row skips this: its lease has

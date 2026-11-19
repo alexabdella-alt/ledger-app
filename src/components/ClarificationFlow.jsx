@@ -99,7 +99,7 @@ function deriveSession(item) {
         // would nudge a reflexive click into one of those, so the option that leads is
         // the one with no wrong outcome.
         options: [
-          { label: "Not sure — set it aside for my accountant", value: "defer" },
+          { label: "Not sure — set it aside for the Shadow team", value: "defer" },
           { label: "Same purchase — file it with that payment", value: "same" },
           { label: "Different purchase — record it separately", value: "different" },
         ],
@@ -413,10 +413,10 @@ function ClarificationCard({ item }) {
       // terminal), and HELD rows feed the completeness net into the CPA review queue.
       // A defer that booked would be indistinguishable from an answer.
       logAudit("invoice_deferred",
-        `${inv.vendor} · ${money(inv.amount)} — set aside for the accountant: may be the same purchase as the payment on ${ex.date || "an earlier date"}. Nothing booked.`,
+        `${inv.vendor} · ${money(inv.amount)} — set aside for our team: may be the same purchase as the payment on ${ex.date || "an earlier date"}. Nothing booked.`,
         null, { deferred_against: String(ex.db_entry_id ?? ex.id ?? ""), exception_kind: MATCH_EXCEPTION_KIND });
       settleClarification?.(item, { kind: "deferred" });
-      finishWithSuccess("Set aside for your accountant — nothing booked", "muted");
+      finishWithSuccess("Set aside for our team — nothing booked", "muted");
     }
   };
 
@@ -611,7 +611,7 @@ function ClarificationCard({ item }) {
       ? "Got it — I'll file this with the payment we already have. Nothing new will be booked."
       : answers.lifecycle === "different"
         ? "Got it — I'll record this as a separate purchase."
-        : "Got it — I'll set this aside for your accountant. Nothing will be booked.";
+        : "Got it — I'll set this aside for our team. Nothing will be booked.";
     if (kind === "duplicate") return answers.duplicate === "skip"
       ? "Got it — I'll skip this duplicate. Nothing will be booked."
       : "Got it — I'll book this as a separate charge.";

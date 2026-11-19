@@ -29,7 +29,7 @@ describe("★★ ownerSignOffBlockers", () => {
     expect(out).toContain("1 document isn't in your books yet.");
   });
   it("an unknown net is reported, not dropped", () => {
-    expect(ownerSignOffBlockers([{ net: "future", reason: "?" }])).toEqual(["Something your accountant can see is still open."]);
+    expect(ownerSignOffBlockers([{ net: "future", reason: "?" }])).toEqual(["Something our team can see is still open."]);   // C739
     expect(ownerSignOffBlockers([])).toEqual([]);
   });
 });

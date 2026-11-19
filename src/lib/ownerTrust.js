@@ -160,7 +160,7 @@ export function ownerTrustState({
     capturedText = `We couldn't read ${unreadableCount} ${plural(unreadableCount, "document", "documents")} you sent — ${plural(unreadableCount, "it isn't", "they aren't")} in your books yet.`;
     capturedStateVal = "attention";
   } else if (accountantCount > 0) {
-    capturedText = `${accountantCount} ${plural(accountantCount, "document is", "documents are")} with your accountant to decide — not in your books yet.`;
+    capturedText = `${accountantCount} ${plural(accountantCount, "document is", "documents are")} with our team to decide — not in your books yet.`;
     capturedStateVal = "attention";
   } else if (partialCount > 0) {
     capturedText = `${partialCount} ${plural(partialCount, "document is", "documents are")} only partly in your books — bring ${plural(partialCount, "it", "them")} back to finish.`;
@@ -192,15 +192,15 @@ export function ownerTrustState({
     ? (selfSigned
         // ★ SAYS WHO. Not a disclaimer — an accurate description of what was recorded, and
         // the one thing a reader would want to know before relying on it.
-        ? `You signed these off yourself through ${signedLabel} — no accountant has reviewed them.`
+        ? `You signed these off yourself through ${signedLabel} — our team hasn't reviewed them yet.`
         : `Reviewed and signed off through ${signedLabel}.`)
     : hasAttester
-      ? "Awaiting your accountant's sign-off."
+      ? "Our team checks each month — not signed off yet."
       // ★★ NO ATTESTER: the old sentence named a person who does not exist. This states the
       // position and BOTH routes out of it — the operator's decision was that a solo owner may
       // sign with an acknowledgement, so offering only "add your accountant" would now be a
       // second incomplete sentence in the same place.
-      : "Nobody has reviewed these yet — you can sign them off yourself, or add your accountant.";
+      : "Our team checks each month — nothing signed off yet.";
 
   // ── NOTHING WRONG (from confidence + accuracy + bank-match). The ONE owner nudge is a
   //    confidence flag (owner can answer it). An accuracy mismatch is honest-but-not-owner-
@@ -234,7 +234,7 @@ export function ownerTrustState({
     // Something unusual is open (e.g. a possible duplicate payment). Not an owner task —
     // the accountant reviews it — so honest, reassuring, and NOT green. No jargon.
     // C725 — with no accountant on the company, nobody is "taking a look" (C574's rule)
-    correctText = `${anomalyCount === 1 ? "Something looks" : `${anomalyCount} things look`} unusual — ${hasAttester === false ? "ask the assistant about it, or invite your accountant." : "your accountant is taking a look."}`;
+    correctText = `${anomalyCount === 1 ? "Something looks" : `${anomalyCount} things look`} unusual — ${"our team is taking a look."}`;
     correctStateVal = "attention";
   } else if (!accuracyOk) {
     // A control-total mismatch is a system/accountant concern, not an owner task — say so
@@ -318,11 +318,11 @@ export function ownerAnomalyLine(anomalies = [], { hasAccountant = true } = {}) 
   const small = quiet.every(a => a.severity === "low") ? " small" : "";
   // C574 — with nobody to look it over, say how to find out, rather than who will.
   if (!hasAccountant) return n === 1
-    ? `One${small} thing noted — ask the assistant about it, or invite your accountant to look it over.`
-    : `${n}${small} things noted — ask the assistant about them, or invite your accountant to look them over.`;
+    ? `One${small} thing noted — our team will look it over.`
+    : `${n}${small} things noted — our team will look them over.`;
   return n === 1
-    ? `One${small} thing noted — your accountant will look it over.`
-    : `${n}${small} things noted — your accountant will look them over.`;
+    ? `One${small} thing noted — our team will look it over.`
+    : `${n}${small} things noted — our team will look them over.`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,10 +336,10 @@ export function ownerAnomalyLine(anomalies = [], { hasAccountant = true } = {}) 
 // see", never dropped — a blocker that vanishes from the list is a sign-off nobody meant.
 // ─────────────────────────────────────────────────────────────────────────────
 export function ownerSignOffBlockers(blockers = [], { periodLabel = "this month", hasAccountant = true } = {}) {
-  // C574 — this card is the SOLO owner's sign-off; "your accountant can see which" sent them
+  // C574 — this card is the SOLO owner's sign-off; "our team can see which" sent them
   // to someone who does not exist.
-  const someoneCanSee = hasAccountant ? "your accountant can see which" : "invite your accountant to find which";
-  const stillOpen = hasAccountant ? "Something your accountant can see is still open." : "Something is still open that an accountant would need to check — invite yours from Settings → Team.";
+  const someoneCanSee = hasAccountant ? "our team can see which" : "our team can see which";
+  const stillOpen = hasAccountant ? "Something our team can see is still open." : "Something our team can see is still open.";
   const out = [];
   for (const b of blockers || []) {
     if (!b) continue;

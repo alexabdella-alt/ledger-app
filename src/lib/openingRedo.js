@@ -42,7 +42,7 @@ export function planOpeningRedo({ openingPosted = false, cutoffDate = null, canE
   if (signed) {
     return {
       ok: false, reason: REDO_REFUSED.SIGNED_PERIOD,
-      message: `Your starting balances sit in ${signed}, which your accountant has signed off. They'd need to reopen that month before this can change.`,
+      message: `Your starting balances sit in ${signed}, which has been signed off. Our team would need to reopen that month before this can change.`,
     };
   }
   return {

@@ -30,7 +30,7 @@ describe("★ applyGaapAnswer", () => {
 describe("★★ compensateCapitalization says what actually happened", () => {
   it("a failed rollback returns after its own sentence — 'don't try again' — and never reaches the 'rolled back' one", () => {
     const fail = comp.slice(comp.indexOf("if (!comp.ok) {"), comp.indexOf("setInvoices(prev => prev.filter"));
-    expect(fail).toMatch(/Don't try again — send this to your accountant/);
+    expect(fail).toMatch(/Don't try again — let us know and we'll sort it out/);   // C739
     expect(fail).toMatch(/return;\s*\}\s*$/);
     expect(fail).not.toMatch(/so we undid the entry/);
     const ok = comp.slice(comp.indexOf("setInvoices(prev => prev.filter"));

@@ -166,7 +166,7 @@ export default function SettingsView() {
                         style={{width:"100%",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"9px 12px",color:"var(--sc-text)",fontSize:13,outline:"none"}}>
                         {[["12-31","December 31"],["03-31","March 31"],["06-30","June 30"],["09-30","September 30"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
                       </select>
-                      <div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:4,lineHeight:1.4}}>The month your business's year ends for taxes. Most small businesses: December 31. Not sure? Leave it — your accountant can change it.</div>
+                      <div style={{fontSize:11,color:"var(--sc-text-mut)",marginTop:4,lineHeight:1.4}}>The month your business's year ends for taxes. Most small businesses: December 31. Not sure? Leave it — it can be changed later.</div>
                     </div>
                     {/* C476 — the "Default cash account" and "Currency" pickers are gone: both were saved to
                         the company row and read by nothing. Cash comes from the bank account a statement is

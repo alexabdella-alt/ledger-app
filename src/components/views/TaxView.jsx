@@ -557,9 +557,8 @@ export default function TaxView() {
             who is watching. `hasAttester` already answers this and DEFAULTS TRUE, so a failed
             membership read can never manufacture "you have no accountant" (O131's own rule). */}
         <div style={{ fontSize: 12, color: "var(--sc-text-2)", lineHeight: 1.6, marginTop: 6 }}>
-          {hasAttester === false
-            ? "Questions? Nobody is reviewing your books yet — add your accountant under Settings → Team and they can go through these with you."
-            : "Questions? Your accountant can review your books and go through these figures with you."}
+          {/* C739 — the Shadow team is every client's reviewer */}
+          Questions? Ask the assistant, or ask our team to go through these figures with you.
         </div>
       </div>
     </div>

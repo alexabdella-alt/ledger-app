@@ -93,7 +93,7 @@ describe("C372 — accountant-held documents are not 'accounted for' either", ()
   const base = { controlTotals: { failed: [], allTie: true }, intakeRows: [{ id: "r1", status: "recorded", journal_entry_ids: ["je1"] }], completenessChecked: true, reviewedThrough: "2026-07", hasBooks: true, setupComplete: true };
   it("the captured line names them and the header is not all-clear", () => {
     const t = ownerTrustState({ ...base, heldForAccountant: 2 });
-    expect(t.lines.captured.text).toBe("2 documents are with your accountant to decide — not in your books yet.");
+    expect(t.lines.captured.text).toBe("2 documents are with our team to decide — not in your books yet.");
     expect(t.lines.captured.ok).toBe(false);
     expect(t.overall).toBe("attention");
     expect(t.nudge).toBeNull();   // not the owner's task — no button to press
