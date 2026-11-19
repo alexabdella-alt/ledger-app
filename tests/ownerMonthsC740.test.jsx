@@ -65,11 +65,12 @@ describe("the month list on Reports", () => {
     await loadCompleteness(fake, NOW, { companyId: "c1" });
     expect(calls.map(([t, c]) => `${t}.${c}`).sort()).toEqual(["bank_accounts.company_id", "bank_statement_lines.company_id", "bank_statements.company_id", "companies.id", "document_intake.company_id", "journal_entries.company_id", "period_signoffs.company_id", "reconciliations.company_id"]);
   });
-  it("renders the lines, newest first", () => {
+  it("renders the owner's books card (C759: 'Your books' — what we need, and what's matched)", () => {
     const st = { report: completenessReport(base) };
-    const h = renderToStaticMarkup(<MonthStatusView state={st} />);
-    expect(h).toContain("Your months");
-    expect(h.indexOf("November 2026")).toBeLessThan(h.indexOf("October 2026"));
+    const h = renderToStaticMarkup(<MonthStatusView state={st} now={NOW} />);
+    expect(h).toContain("Your books");
+    expect(h).not.toContain("Your months");
+    expect(h).toMatch(/data-books-(need|nothing)/);
   });
   it("★ the owner's Reports shows the months, not the sign-off panel", () => {
     const rv = readFileSync("src/components/views/ReportsView.jsx", "utf8");

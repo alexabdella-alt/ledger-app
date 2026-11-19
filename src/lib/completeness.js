@@ -213,3 +213,47 @@ export function ownerMonthLines(months = []) {
     return { tone: g.tone, text: `${range}${rest}` };
   });
 }
+
+// ★ C759 — "YOUR BOOKS", NOT "YOUR MONTHS". The month list showed an owner our internal states —
+// "complete" vs "closed 🔒" vs "our team is finishing this month" (said even of the month not yet
+// over) — the old sign-off idea leaking through (operator, 2026-11-19: "stuck between the old thing
+// where the accountant signed off and the new thing"). An owner needs two answers: is anything
+// needed from me, and are my books OK. So:
+//   need      — only what the owner can do (drop a statement), grouped into runs as before;
+//   matched   — the months that match the bank (complete and closed are the same thing to an owner);
+//   reviewing — past months our team is still checking, said once with "nothing needed from you".
+// The month in progress isn't mentioned — it isn't over. Pure; reads the same report as the operator.
+export function monthRangesText(periods = []) {
+  const ps = [...new Set((periods || []).filter(isYm))].sort();
+  if (!ps.length) return "";
+  const runs = [];
+  for (const p of ps) {
+    const last = runs[runs.length - 1];
+    if (last && nextMonth(last[1]) === p) last[1] = p; else runs.push([p, p]);
+  }
+  const label = ([a, b]) => {
+    if (a === b) return monthName(a);
+    return a.slice(0, 4) === b.slice(0, 4) ? `${monthName(a).replace(/ \d{4}$/, "")} – ${monthName(b)}` : `${monthName(a)} – ${monthName(b)}`;
+  };
+  const parts = runs.map(label);
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+export function ownerBooksStatus(months = [], { current = "" } = {}) {
+  const newestFirst = [...(months || [])].filter((m) => m && isYm(m.period)).sort((a, b) => b.period.localeCompare(a.period));   // the report lists them oldest first
+  const withLine = newestFirst.map((m) => ({ m, l: ownerMonthLine(m) })).filter((x) => x.l);
+  const need = ownerMonthLines(withLine.filter((x) => x.l.tone === "you").map((x) => x.m));
+  const matched = withLine.filter((x) => x.l.tone === "done" || x.l.tone === "closed").map((x) => x.m.period);
+  const reviewing = withLine.filter((x) => x.l.tone === "team" && x.m.status !== "in_progress" && x.m.period !== current).map((x) => x.m.period);
+  return { need, matched: monthRangesText(matched), reviewing: monthRangesText(reviewing) };
+}
+
+export const OWNER_BOOKS_COPY = {
+  title: "Your books",
+  needHead: "We need from you",
+  nothing: "Nothing needed from you right now.",
+  matched: (r) => `Matched to your bank: ${r}.`,
+  reviewing: (r) => `Our team is checking ${r} — nothing needed from you.`,
+  upload: "Upload on Home →",
+};
+

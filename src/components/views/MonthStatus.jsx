@@ -1,7 +1,7 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { loadCompleteness } from "../../lib/completenessLoad";
-import { ownerMonthLines } from "../../lib/completeness";
+import { ownerBooksStatus, OWNER_BOOKS_COPY } from "../../lib/completeness";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ★ C740 — THE OWNER'S MONTHS. Replaces the sign-off panel on Reports (operator, 2026-11-18: "I don't
@@ -10,38 +10,48 @@ import { ownerMonthLines } from "../../lib/completeness";
 // can do — drop a statement), or our team finishing it. The owner never signs anything off; the
 // operator closes months. A read that fails says so — it is never shown as "complete".
 // ─────────────────────────────────────────────────────────────────────────────
-const TONE = {
-  done:     { c: "var(--sc-success)", g: "✓" },
-  closed:   { c: "var(--sc-success)", g: "🔒" },
-  you:      { c: "var(--sc-warning)", g: "•" },
-  team:     { c: "var(--sc-text-2)",  g: "…" },
-  progress: { c: "var(--sc-text-2)",  g: "…" },
-};
+// ★ C759 — "Your books": what we need from the owner (only things they can do), and one line each for
+// the months that match the bank and the months our team is still checking. No "closed", no "complete
+// vs closed", nothing about sign-off, and nothing about the month that isn't over (lib/completeness.js
+// ownerBooksStatus). The read failing says so — never shown as fine.
+const ymNow = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
-export function MonthStatusView({ state }) {
+export function MonthStatusView({ state, now = new Date(), onUpload = null }) {
   const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "16px 20px", marginBottom: 20 };
-  if (!state || state.loading) return <div data-month-status="loading" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>Checking your months…</div>;
-  if (state.failed) return <div data-month-status="failed" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>We couldn't check your months just now — that's not a sign anything is wrong. Reload the page to try again.</div>;
+  if (!state || state.loading) return <div data-month-status="loading" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>Checking your books…</div>;
+  if (state.failed) return <div data-month-status="failed" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>We couldn't check your books just now — that's not a sign anything is wrong. Reload the page to try again.</div>;
   const r = (state.report || [])[0];
   if (!r || r.status === "empty") return null;
-  const lines = ownerMonthLines([...(r.months || [])].reverse());   // C749 — a run of months says it once
-  if (!lines.length) return null;
+  const st = ownerBooksStatus(r.months || [], { current: ymNow(now) });
+  if (!st.need.length && !st.matched && !st.reviewing) return null;
+  const row = { display: "flex", gap: 10, alignItems: "baseline", padding: "6px 0", fontSize: 13, color: "var(--sc-text)" };
   return (
     <div data-month-status="ready" style={card}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)" }}>Your months</div>
-      <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2, marginBottom: 8 }}>A month is complete when every upload is in your books and it matches your bank to the penny.</div>
-      {lines.map((l, i) => (
-        <div key={i} data-month-line={l.tone} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "6px 0", borderTop: i ? "1px solid var(--sc-surface-2)" : "none", fontSize: 13, color: "var(--sc-text)" }}>
-          <span style={{ color: TONE[l.tone]?.c, fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>{TONE[l.tone]?.g}</span>
-          <span>{l.text}</span>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", marginBottom: 6 }}>{OWNER_BOOKS_COPY.title}</div>
+      {st.need.length ? (
+        <div data-books-need>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-warning)", margin: "2px 0 2px" }}>{OWNER_BOOKS_COPY.needHead}</div>
+          {st.need.map((l, i) => (
+            <div key={i} data-month-line="you" style={row}>
+              <span style={{ color: "var(--sc-warning)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>•</span>
+              <span>{l.text}</span>
+            </div>
+          ))}
+          {onUpload && <button data-books-upload onClick={onUpload} style={{ marginTop: 6, marginLeft: 26, padding: "7px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", background: "var(--sc-gold)", color: "var(--sc-on-accent)", cursor: "pointer" }}>{OWNER_BOOKS_COPY.upload}</button>}
         </div>
-      ))}
+      ) : (
+        <div data-books-nothing style={row}><span style={{ color: "var(--sc-success)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>✓</span><span>{OWNER_BOOKS_COPY.nothing}</span></div>
+      )}
+      {(st.matched || st.reviewing) && <div style={{ borderTop: "1px solid var(--sc-surface-2)", marginTop: 8, paddingTop: 4 }}>
+        {st.matched && <div data-month-line="matched" style={row}><span style={{ color: "var(--sc-success)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>✓</span><span>{OWNER_BOOKS_COPY.matched(st.matched)}</span></div>}
+        {st.reviewing && <div data-month-line="team" style={{ ...row, color: "var(--sc-text-2)" }}><span style={{ fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>…</span><span>{OWNER_BOOKS_COPY.reviewing(st.reviewing)}</span></div>}
+      </div>}
     </div>
   );
 }
 
 export default function MonthStatus() {
-  const { supabase, currentCompany } = useERP();
+  const { supabase, currentCompany, setView } = useERP();
   const [state, setState] = React.useState({ loading: true });
   React.useEffect(() => {
     let cancelled = false;
@@ -52,5 +62,5 @@ export default function MonthStatus() {
       .catch((e) => { if (!cancelled) setState({ loading: false, failed: [String(e?.message || e)] }); });
     return () => { cancelled = true; };
   }, [currentCompany?.id, supabase]);
-  return <MonthStatusView state={state} />;
+  return <MonthStatusView state={state} onUpload={setView ? () => setView("home") : null} />;
 }

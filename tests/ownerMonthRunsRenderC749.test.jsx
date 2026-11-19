@@ -8,8 +8,8 @@ const m = (period, status, extra = {}) => ({ period, status, locked: false, item
 describe("C749 — rendered and edge cases", () => {
   it("★★ the page draws one line for the run", () => {
     const months = ["2026-06", "2026-07", "2026-08", "2026-09", "2026-10"].map((p) => m(p, "unchecked")).concat(m("2026-11", "in_progress"));
-    const h = renderToStaticMarkup(<MonthStatusView state={{ report: [{ status: "problem", months }] }} />).replace(/&#x27;/g, "'");
-    expect((h.match(/data-month-line=/g) || []).length).toBe(2);
+    const h = renderToStaticMarkup(<MonthStatusView state={{ report: [{ status: "problem", months }] }} now={new Date(2026, 10, 18)} />).replace(/&#x27;/g, "'");
+    expect((h.match(/data-month-line=/g) || []).length).toBe(1);   // C759 — the month in progress isn't mentioned
     expect(h).toContain("June – October 2026 — not checked against your bank yet. Drop those months' bank statements on Home.");
   });
   it("★★ same colour, different words: two lines", () => {
