@@ -44,6 +44,12 @@ describe("C759 — the owner's books, in two answers", () => {
   it("★ only the month in progress → no card at all (nothing to say yet)", () => {
     expect(render([m("2026-11", "in_progress")])).toBe("");
   });
+  it("★★ the report lists months OLDEST first — the result is the same either way", () => {
+    const a = ownerBooksStatus(MONTHS, { current: "2026-11" });
+    const b = ownerBooksStatus([...MONTHS].reverse(), { current: "2026-11" });
+    expect(b).toEqual(a);
+    expect(b.need).toHaveLength(2);
+  });
   it("★ ranges: runs, gaps and year ends", () => {
     expect(monthRangesText(["2026-01", "2026-02", "2026-03"])).toBe("January – March 2026");
     expect(monthRangesText(["2026-01", "2026-03"])).toBe("January 2026 and March 2026");
