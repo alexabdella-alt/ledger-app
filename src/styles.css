@@ -215,6 +215,10 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
    `!important` throughout because the app styles inline, and inline wins otherwise.
    ═══════════════════════════════════════════════════════════════════════════ */
 /* C746 — a short form shown only at 760px and under, beside a full form hidden there */
+/* C750 — "on a touch phone only" (the camera buttons). Was defined only inside Home's own style
+   block, so a camera button anywhere else (an entry's "add a receipt") never appeared. */
+.sc-phone-only { display: none !important; }
+@media (pointer: coarse) { .sc-phone-only { display: flex !important; } }
 .sc-show-narrow { display: none; }
 
 @media (max-width: 760px) {

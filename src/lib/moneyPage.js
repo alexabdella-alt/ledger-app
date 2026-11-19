@@ -36,13 +36,16 @@ export function moneySummary({ owe = 0, billsOpen = 0, owed = 0, invoicesOpen = 
   ];
 }
 
-// The people and files, one click away below the list.
+// The people and files. ★ C750 — at the TOP of the page, as cards that say what is behind them.
+// They sat below the whole list as small "Also here:" chips — so the receipts and bills the owner
+// had uploaded, and the people they pay and get paid by, were the last thing on the page and easy
+// to never find. Documents first: it is where every photo and file they've sent is kept.
 export function moneyLinks({ contacts = [], docs = [] } = {}) {
   const vendors = (contacts || []).filter((c) => c && c.type !== "customer").length;
   const customers = (contacts || []).filter((c) => c && (c.type === "customer" || c.type === "both")).length;
   return [
-    { view: "customers", label: "Customers", count: customers },
-    { view: "vendors", label: "Vendors", count: vendors },
-    { view: "docs", label: "Documents", count: (docs || []).length },
+    { view: "docs", icon: "📄", label: "Documents", count: (docs || []).length, sub: "Every receipt, bill and statement you've sent" },
+    { view: "vendors", icon: "🏪", label: "Vendors", count: vendors, sub: "Who you pay" },
+    { view: "customers", icon: "🤝", label: "Customers", count: customers, sub: "Who pays you" },
   ];
 }

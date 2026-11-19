@@ -63,7 +63,7 @@ describe("the Money page is one list (C637)", () => {
 
   it("people and files stay one click away", () => {
     expect(moneyLinks({ contacts: [{ type: "vendor" }, { type: "customer" }, { type: "vendor" }], docs: [{}] }).map((l) => [l.view, l.count]))
-      .toEqual([["customers", 1], ["vendors", 2], ["docs", 1]]);
+      .toEqual([["docs", 1], ["vendors", 2], ["customers", 1]]);
   });
 
   it("★ renders the figures, the embedded list with the owner's filters, and the links", () => {

@@ -39,6 +39,21 @@ export default function MoneyView() {
         </button>}
       </div>
 
+      {/* ★ C750 — documents and people at the top, as cards — not chips under the whole list. */}
+      <div data-money-links style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginBottom: 14 }}>
+        {links.map((l) => (
+          <button key={l.view} data-money-link={l.view} onClick={() => setView(l.view)}
+            style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "12px 16px", cursor: "pointer", fontFamily: "var(--sc-font-ui)", color: "var(--sc-text)" }}>
+            <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--sc-gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{l.icon}</span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ display: "block", fontSize: 15, fontWeight: 600 }}>{l.label}{l.count ? <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}> · {l.count}</span> : null}</span>
+              <span style={{ display: "block", fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{l.sub}</span>
+            </span>
+            <span aria-hidden="true" style={{ color: "var(--sc-text-mut)", fontSize: 16 }}>›</span>
+          </button>
+        ))}
+      </div>
+
       <div data-money-summary style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12, marginBottom: 18 }}>
         {summary.map((s) => {
           const on = booksFilter === s.filter;
@@ -55,15 +70,6 @@ export default function MoneyView() {
 
       <BooksView embedded />
 
-      <div data-money-links style={{ marginTop: 22, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "var(--sc-text-2)" }}>Also here:</span>
-        {links.map((l) => (
-          <button key={l.view} data-money-link={l.view} onClick={() => setView(l.view)}
-            style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border-2)", borderRadius: 20, padding: "6px 14px", fontSize: 13, color: "var(--sc-text)", cursor: "pointer" }}>
-            {l.label}{l.count ? ` · ${l.count}` : ""}
-          </button>
-        ))}
-      </div>
       <div style={{ marginTop: 14, fontSize: 13, color: "var(--sc-text-2)" }}>
         {MONEY_PAGE_COPY.askHint}{" "}
         <button onClick={() => setChatOpen && setChatOpen(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--sc-gold)", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>{MONEY_PAGE_COPY.askButton}</button>

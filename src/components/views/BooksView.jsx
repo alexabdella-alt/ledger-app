@@ -18,6 +18,7 @@ import { pill } from "../../lib/ui";
 import { OWNER_MONEY_FILTERS } from "../../lib/moneyPage";
 import { ownerAccountName } from "../../lib/categoryLabel";
 import TransactionDetailPanel from "../TransactionDetailPanel";
+import { linkedDocIds, hasSourceDoc, RECEIPT_MARK, RECEIPT_MARK_LABEL } from "../../lib/sourceDoc";
 
 // C637 — `embedded`: drawn inside the owner's Money page, which carries its own title.
 export default function BooksView({ embedded = false } = {}) {
@@ -38,6 +39,8 @@ export default function BooksView({ embedded = false } = {}) {
   const scopedInvoices = vendorScoped && Array.isArray(filteredInvoices) ? filteredInvoices : invoices;
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
+  // C750 — which rows have their receipt saved (📎), by the rule the detail panel uses.
+  const receiptIds = React.useMemo(() => linkedDocIds(docLibrary), [docLibrary]);
   const settled = React.useMemo(() => settledBases(invoices), [invoices]);   // C528 — bills a live payment links get no Mark as Paid
   // ★★ C315 — THIS SCREEN BECAME CLIENT-FACING ON 2026-09-10 (C313) AND WAS WRITTEN FOR
   // A CPA. `cockpit` gates the three things on it that are the CPA's job rather than the
@@ -369,7 +372,7 @@ export default function BooksView({ embedded = false } = {}) {
                         style={{ cursor:"pointer" }} />
                     </td>
                     <td className="sc-c-date" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
-                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span></div></td>
+                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span>{hasSourceDoc(inv, receiptIds) && <span data-receipt-mark title={RECEIPT_MARK_LABEL} aria-label={RECEIPT_MARK_LABEL} role="img" style={{ fontSize:13, flexShrink:0 }}>{RECEIPT_MARK}</span>}</div></td>
                     <td className="sc-c-desc" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(cockpit ? inv.description : descAfterParty(inv.description, party))||"—"}</td>
                     <td className="sc-c-cat" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td className="sc-c-amt" style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>

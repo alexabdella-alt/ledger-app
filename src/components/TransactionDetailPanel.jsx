@@ -10,6 +10,8 @@ import { classifyTxn, settlementKind, entryTotalOf, entryLineCount, displayParty
 import { isCancelledOrCancelling, isReversalEntry, settledBases } from "../lib/gl";
 import { badge } from "../lib/ui";
 import { isDurableDocId } from "../lib/docLibrary";
+import { sourceDocFor, RECEIPT_ADD_COPY } from "../lib/sourceDoc";
+import { shrinkImageFile, HEIC_UNREADABLE_COPY } from "../lib/phoneImage";
 import { planRecodeSweep } from "../lib/recodeSweep";
 import { signedPeriodForDate } from "../lib/signedPeriod";
 import { classifyBankReason } from "../lib/bankMatch";
@@ -163,6 +165,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
   const [payFromKey, setPayFromKey] = React.useState(null);   // C674
   const payFromOpts = usePayFromOptions();
   const srcFileRef = React.useRef(null);
+  const srcCameraRef = React.useRef(null);   // C750 — the phone camera
 
   React.useEffect(() => { setRecodeOpen(false); setPayOpen(false); setSweepOffer(null); }, [invoiceId]);
 
@@ -179,23 +182,14 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
 
-  const findSourceDoc = (inv) => {
-    const match = (docLibrary || []).find(d =>
-      d.linked_invoice_id && (String(d.linked_invoice_id) === String(inv?.id) || String(d.linked_invoice_id) === String(inv?.db_entry_id))
-    );
-    // Diagnostic: surfaces the linked_invoice_id values present vs. what we're matching
-    // against, making any id mismatch obvious in the console.
-    if (!match) {
-      console.log("[SourceDoc] no match for invoice", { id: inv?.id, db_entry_id: inv?.db_entry_id },
-        "· docLibrary linked_invoice_ids:", (docLibrary || []).map(d => d.linked_invoice_id),
-        `· docLibrary size: ${(docLibrary || []).length}`);
-    }
-    return match;
-  };
+  const findSourceDoc = (inv) => sourceDocFor(inv, docLibrary);   // C750 — the same rule the list's 📎 uses
   const handleSourceUpload = async (file, inv) => {
     if (!file || !inv) return;
+    // ★ C750 — the same treatment as a photo dropped on Home (C736): a big phone photo or an iPhone
+    // HEIC is redrawn as a readable JPEG BEFORE the guard, so it is neither too big nor turned away.
+    file = await shrinkImageFile(file);
     const v = validateUpload(file, "document");   // size + type guard (CR-34)
-    if (!v.ok) { showNotification(v.error, "error"); return; }
+    if (!v.ok) { showNotification(/\.(heic|heif)$/i.test(file?.name || "") ? HEIC_UNREADABLE_COPY : v.error, "error"); return; }
     setSrcUploading(true);
     try {
       const base64 = await fileToBase64(file);
@@ -204,7 +198,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
       // in-session float when the persist fails — or, since O136, when the file was already
       // in the library and the link to THIS transaction did not land. Both already raised
       // their own error toast; a "✓" on top of it would be the contradiction.
-      if (isDurableDocId(storedId)) showNotification("Source document attached ✓");
+      if (isDurableDocId(storedId)) showNotification(RECEIPT_ADD_COPY.saved);
     } catch (e) { console.error(e); showNotification("Couldn't attach document.", "error"); }
     setSrcUploading(false);
   };
@@ -343,10 +337,17 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                       {srcDoc ? (
                         <SourceDocPreview doc={srcDoc} onExpand={() => setSrcDocPreview(srcDoc)} />
                       ) : (
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, background: "var(--sc-bg)", border: "1px dashed var(--sc-border-2)", borderRadius: 10, padding: "12px 14px" }}>
-                          <div style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>No source document attached.</div>
-                          <button onClick={() => srcFileRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-surface)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? "Uploading…" : "↑ Upload"}</button>
-                          <input ref={srcFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleSourceUpload(f, sel); }} />
+                        <div data-src-missing style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, background: "var(--sc-bg)", border: "1px dashed var(--sc-border-2)", borderRadius: 10, padding: "12px 14px" }}>
+                          <div style={{ fontSize: 12, color: "var(--sc-text-mut)" }}>{RECEIPT_ADD_COPY.none}</div>
+                          {isViewer ? null : (
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                              {/* ★ C750 — on a phone, the camera opens straight away (the Home button's behaviour, C736) */}
+                              <button data-src-camera className="sc-phone-only" onClick={() => srcCameraRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? RECEIPT_ADD_COPY.busy : RECEIPT_ADD_COPY.camera}</button>
+                              <button data-src-file onClick={() => srcFileRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? RECEIPT_ADD_COPY.busy : RECEIPT_ADD_COPY.file}</button>
+                            </div>
+                          )}
+                          <input ref={srcFileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleSourceUpload(f, sel); }} />
+                          <input ref={srcCameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleSourceUpload(f, sel); }} />
                         </div>
                       )}
                     </div>

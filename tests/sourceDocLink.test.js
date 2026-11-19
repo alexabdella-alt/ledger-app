@@ -155,10 +155,14 @@ describe("App.jsx storeDocument's dedupe branch writes the link, not only the ty
 });
 
 describe("the detail panel still matches a document on either id", () => {
-  it("findSourceDoc compares linked_invoice_id to inv.id AND inv.db_entry_id", () => {
+  it("findSourceDoc compares linked_invoice_id to inv.id AND inv.db_entry_id (C750: via the shared sourceDocFor)", async () => {
     const src = code(PANEL);
-    expect(src).toMatch(/String\(d\.linked_invoice_id\) === String\(inv\?\.id\)/);
-    expect(src).toMatch(/String\(d\.linked_invoice_id\) === String\(inv\?\.db_entry_id\)/);
+    expect(src).toMatch(/const findSourceDoc = \(inv\) => sourceDocFor\(inv, docLibrary\)/);
+    const { sourceDocFor } = await import("../src/lib/sourceDoc.js");
+    const lib = [{ id: "d1", linked_invoice_id: "je-1" }];
+    expect(sourceDocFor({ id: "je-1" }, lib)?.id).toBe("d1");
+    expect(sourceDocFor({ id: "je-1_2", db_entry_id: "je-1" }, lib)?.id).toBe("d1");
+    expect(sourceDocFor({ id: "je-2", db_entry_id: "je-2" }, lib)).toBeUndefined();
   });
 });
 
@@ -175,7 +179,7 @@ describe("the manual attach button is gated on the record, not the click", () =>
   it("is scoped to a non-empty slice", () => { expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start); });
   it("reads storeDocument's return and shows ✓ only for a durable id", () => {
     expect(fn).toMatch(/const storedId = await storeDocument\(/);
-    expect(fn).toMatch(/if \(isDurableDocId\(storedId\)\) showNotification\("Source document attached ✓"\)/);
+    expect(fn).toMatch(/if \(isDurableDocId\(storedId\)\) showNotification\(RECEIPT_ADD_COPY\.saved\)/);
     expect(panel).toMatch(/import \{ isDurableDocId \} from "\.\.\/lib\/docLibrary"/);
   });
   it("storeDocument returns the in-session fallback when a REQUESTED link did not land on an existing row", () => {
