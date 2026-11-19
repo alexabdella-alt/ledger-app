@@ -359,7 +359,7 @@ Each is written before the build. A criterion that passes for the wrong reason i
 
 ## 10. DECISIONS FOR THE OPERATOR
 
-1. **Domain — OPEN.** Inbound needs MX on a subdomain we control (`in.<domain>`); outbound needs
+1. **Domain — DECIDED: `shadowcfo.org`** (bought by the operator, 2026-11-18). `MAIL_DOMAIN=shadowcfo.org`; inbound addresses `docs-<token>@in.shadowcfo.org`; sending from `bookkeeper@shadowcfo.org`. *(Was OPEN:)* Inbound needs MX on a subdomain we control (`in.<domain>`); outbound needs
    SPF/DKIM on the sending domain. The app has no custom domain today (`O31`); `ledger-app-five.
    vercel.app` cannot receive mail. **A domain must be bought or chosen before the first deploy**,
    then set as the `MAIL_DOMAIN` secret and verified in Resend.
