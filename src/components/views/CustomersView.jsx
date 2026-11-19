@@ -208,7 +208,7 @@ export default function CustomersView() {
                       const overdueAR = openFor(custInvoices).filter(i=>i.due_date&&i.due_date<todayLocal()).reduce((s,i)=>s+owedAmount(i),0);   // C452/C454 — same rule, taxed amount
                       return (
                         <div key={c.id||c.name} style={{ background:"var(--sc-surface)", border:`1px solid ${overdueAR>0?"var(--sc-error-soft)":"var(--sc-border)"}`, borderRadius:14, overflow:"hidden" }}>
-                          <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
+                          <div className="sc-rowcard" style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
                             <VendorAvatar vendor={c} size={44} radius={12} fontSize={15} onClick={()=>setSelCustomer(c)} />
                             <div onClick={()=>setSelCustomer(c)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
@@ -224,7 +224,7 @@ export default function CustomersView() {
                                 {c.phone && <span style={{ marginLeft:10 }}>📞 {c.phone}</span>}
                               </div>
                             </div>
-                            <div style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
+                            <div className="sc-rowcard-end" style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
                               {billedYTD>0 && <div style={{ textAlign:"right" }}>
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>BILLED YTD</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-success)" }}>{fmt(billedYTD)}</div>

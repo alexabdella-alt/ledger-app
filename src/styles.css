@@ -357,4 +357,47 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   .sc-chat-input { font-size: 16px !important; }
   .sc-composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important; }
 }
+/* ★ C757 — LESS CRAMMED ON A PHONE (operator's iPhone screenshots, 2026-11-19: "clunky", "shoved in").
+   What sits side by side on a laptop stacks on a phone instead of squeezing into narrow columns. */
+@media (max-width: 760px) {
+  /* the small spaced-out label above each title ("MONEY OUT") is a laptop nicety — on a phone it's clutter */
+  .sc-page [style*="font-size: 10px"][style*="letter-spacing: 3px"] { display: none !important; }
+  .sc-page h1 { font-size: 24px !important; line-height: 1.2 !important; }
+  /* a title with a button or filters beside it: the button/filters go underneath, not into a squeezed column */
+  .sc-page div[style*="space-between"]:has(> div > h1) { flex-wrap: wrap !important; row-gap: 12px !important; align-items: flex-start !important; }
+  .sc-page div[style*="space-between"]:has(> div > h1) > div:first-child { flex: 1 1 100% !important; min-width: 0; }
+  /* filter chips: one row you swipe */
+  .sc-chiprow { flex-wrap: nowrap !important; overflow-x: auto; max-width: 100%; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .sc-chiprow::-webkit-scrollbar { display: none; }
+  .sc-chiprow > * { flex-shrink: 0; }
+
+  /* Vendors / Customers cards: name and tags across the top, the figures and Edit on a line below */
+  .sc-rowcard { flex-wrap: wrap !important; padding: 14px 16px !important; gap: 10px 12px !important; }
+  .sc-rowcard > div:nth-child(2) { flex: 1 1 calc(100% - 60px) !important; }
+  .sc-rowcard-end { flex: 1 1 100% !important; padding-left: 56px; }
+  .sc-rowcard-end > div { text-align: left !important; }
+  .sc-rowcard-end > button:first-of-type { margin-left: auto; }
+
+  /* Documents: two to a row, a small preview, the name on two lines at most; date boxes left to a laptop */
+  .sc-docgrid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+  .sc-docthumb { height: 88px !important; }
+  .sc-docbody { padding: 10px !important; }
+  .sc-docname { font-size: 12.5px !important; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sc-docdates { display: none !important; }
+
+  /* Reports: the report buttons are one row you swipe; the dates get their own line */
+  .sc-reportctl { gap: 8px !important; }
+  .sc-reporttabs { display: flex !important; flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; gap: 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .sc-reporttabs::-webkit-scrollbar { display: none; }
+  .sc-reporttabs > button { flex-shrink: 0; white-space: nowrap; }
+  .sc-reportctl > div[style*="flex: 1"] { display: none; }
+  .sc-reportdates { display: flex !important; flex: 1 1 100%; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .sc-reportdates select { flex: 1 1 100%; }
+  .sc-reportdates input { flex: 1 1 0; min-width: 0; }
+  .sc-page [data-plain-summary] { font-size: 13.5px !important; padding: 12px 14px !important; }
+
+  /* the assistant: the tab bar steps aside while it's open (it covered the text box); a tidy header */
+  body:has(.sc-chat-panel) .sc-tabbar { display: none !important; }
+  .sc-chat-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+}
 @media (max-width: 420px) { .sc-hide-tiny { display: none !important; } }   /* the wordmark; the logo stays */

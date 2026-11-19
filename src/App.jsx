@@ -10260,18 +10260,18 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                 <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>✦</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:600 }}>Shadow</div>
-                  <div style={{ fontSize:11, color:"var(--sc-success)" }}>● Online · Your bookkeeping assistant</div>
+                  <div className="sc-chat-sub" style={{ fontSize:11, color:"var(--sc-success)" }}>● Online · Your bookkeeping assistant</div>
                 </div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
                 <button onClick={()=>setAiInfoOpen(true)} title="What can the assistant do?"
                   style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:13, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center" }}>?</button>
-                <button className="sc-chat-close" onClick={()=>setChatOpen(false)} aria-label="Close the assistant" title="Close"
-                  style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:16, lineHeight:1, display:"none", alignItems:"center", justifyContent:"center" }}>×</button>
                 <button onClick={()=>setChatHistoryView(v=>!v)} title="Action history"
                   style={{ fontSize:11, padding:"5px 11px", borderRadius:8, background:chatHistoryView?"var(--sc-gold)":"var(--sc-surface)", border:`1px solid ${chatHistoryView?"var(--sc-gold)":"var(--sc-border-2)"}`, color:chatHistoryView?"var(--sc-surface)":"var(--sc-text-2)", cursor:"pointer", whiteSpace:"nowrap" }}>
                   {chatHistoryView ? "← Chat" : "History"}
                 </button>
+                <button className="sc-chat-close" onClick={()=>setChatOpen(false)} aria-label="Close the assistant" title="Close"
+                  style={{ width:26, height:26, borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", cursor:"pointer", fontSize:16, lineHeight:1, display:"none", alignItems:"center", justifyContent:"center" }}>×</button>
               </div>
             </div>
           </div>

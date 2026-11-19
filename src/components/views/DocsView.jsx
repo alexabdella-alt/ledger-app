@@ -26,6 +26,14 @@ function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
   return <img src={url} style={style} alt={alt || ""} loading="lazy" />;
 }
 
+// ★ C757 — a phone's camera names a photo "camera-batch-DED86AC4-7E73-…jpg" or "IMG_4512.HEIC";
+// that is a machine's name, not the owner's. Show "Photo" for those (the full name stays on hover).
+export function friendlyDocName(doc = {}) {
+  const n = String(doc.name || "").trim();
+  if (/^(camera-batch-[0-9a-f-]+|img_\d+|image|photo|pxl_[\d_]+|\d{8}_\d{6})(\s*\(\d+\))?\.(jpe?g|png|heic|heif|webp)$/i.test(n)) return "Photo";
+  return n || "Untitled file";
+}
+
 export default function DocsView() {
   const { docLibrary, docsFilterType, docsPreview, setDocsFilterType, setDocsPreview, supabase, invoices, setSelectedInvoice, setReturnTo, setView, loadFailures, companyDataLoaded } = useERP();
   const [query, setQuery] = React.useState("");
@@ -56,7 +64,7 @@ export default function DocsView() {
           <h1 style={{ fontSize: 28, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Documents</h1>
           <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 6 }}>Every uploaded file — invoices, contracts, bank statements, payroll — stored and searchable. {library.length} document{library.length !== 1 ? "s" : ""} stored.</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="sc-chiprow" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {types.map(t => (
             <button key={t} onClick={() => setFilterType(t)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 12, background: filterType === t ? "var(--sc-gold)" : "var(--sc-border)", border: "none", color: filterType === t ? "var(--sc-surface)" : "var(--sc-text-2)", cursor: "pointer", textTransform: "capitalize" }}>{docTypeLabel(t)}</button>
           ))}
@@ -66,10 +74,10 @@ export default function DocsView() {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name, vendor, amount or type…"
           style={{ flex: "1 1 240px", minWidth: 0, height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 12px", fontSize: 13 }} />
-        <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>From
+        <label className="sc-docdates" style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>From
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
             style={{ height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 10px", fontSize: 13 }} /></label>
-        <label style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>To
+        <label className="sc-docdates" style={{ fontSize: 12, color: "var(--sc-text-2)", display: "flex", alignItems: "center", gap: 6 }}>To
           <input type="date" value={to} onChange={e => setTo(e.target.value)}
             style={{ height: 36, borderRadius: 9, border: "1px solid var(--sc-border-2)", background: "var(--sc-surface)", color: "var(--sc-text)", padding: "0 10px", fontSize: 13 }} /></label>
         {(query || from || to) && (
@@ -101,7 +109,7 @@ export default function DocsView() {
           <div style={{ marginTop: 16 }}><NextStep label="Upload on Home →" onClick={() => setView("home")} /></div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
+        <div className="sc-docgrid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 }}>
           {filtered.map(doc => {
             const legacy = !hasFile(doc);
             return (
@@ -110,13 +118,13 @@ export default function DocsView() {
                 onMouseLeave={e => e.currentTarget.style.borderColor = "var(--sc-border)"}
                 onClick={() => setPreview(doc)}>
                 {/* Thumbnail: image preview for images, icon otherwise */}
-                <div style={{ height: 120, background: "var(--sc-surface-2)", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid var(--sc-border)", overflow: "hidden" }}>
+                <div className="sc-docthumb" style={{ height: 120, background: "var(--sc-surface-2)", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid var(--sc-border)", overflow: "hidden" }}>
                   {isImage(doc.mediaType) && hasFile(doc)
                     ? <StoredImage supabase={supabase} path={doc.storage_path} base64={doc.base64} mediaType={doc.mediaType} alt={doc.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     : <div style={{ fontSize: 40 }}>{isPdf(doc.mediaType) ? "📄" : iconFor(doc.type)}</div>}
                 </div>
-                <div style={{ padding: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{doc.name}</div>
+                <div className="sc-docbody" style={{ padding: 14 }}>
+                  <div className="sc-docname" title={doc.name} style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{friendlyDocName(doc)}</div>
                   {/* ★ THE DOCUMENT'S OWN DATE WHEN WE CAN DERIVE IT — a February statement
                       uploaded in August used to read "Aug 25", so "find the January
                       statement" meant "remember which day you uploaded it". A linked entry's

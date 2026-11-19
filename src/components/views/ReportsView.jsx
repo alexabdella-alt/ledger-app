@@ -275,13 +275,17 @@ export default function ReportsView() {
                 </div>
 
                 {/* Controls */}
-                <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
+                <div className="sc-reportctl" style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:24, alignItems:"center" }}>
+                  {/* C757 — on a phone the report buttons are one row you swipe, and the dates sit on their own line */}
+                  <div className="sc-reporttabs" style={{ display:"contents" }}>
                   {(ownerSeat ? ownerReportTabs({ showMore: moreReports, current: reportType }) : reportTabsFor({ reviewer: true })).map(([id,label])=>(
                     <button key={id} onClick={()=>{ setReportType(id); setPlDrill(null); setDrill(null); setDrillSel(null); }} style={pill(reportType===id)}>{label}</button>
                   ))}
                   {/* C640 — the owner's other reports, one click away */}
                   {ownerSeat && <button data-more-reports onClick={()=>setMoreReports(m=>!m)} style={{ background:"none", border:"none", color:"var(--sc-gold)", fontSize:13, fontWeight:600, cursor:"pointer", padding:"6px 4px" }}>{moreReports ? "Fewer reports ▴" : "More reports ▾"}</button>}
+                  </div>
                   <div style={{ flex:1 }} />
+                  <div className="sc-reportdates" style={{ display:"contents" }}>
                   {/* Date range — custom inputs always visible, preset buttons for quick selection */}
                   {/* C640 — an owner picks a period from the menu; the two date boxes appear for "Custom" (the accountant always has them). */}
                   {(!ownerSeat || reportRange === "custom") && <>
@@ -292,6 +296,7 @@ export default function ReportsView() {
                   <select value={reportRange} onChange={e=>{ setReportRange(e.target.value); const d = reportRangeDates(e.target.value, new Date(), { fiscalYearEnd: fyEnd }); if (d) { setReportDateFrom(d.from); setReportDateTo(d.to); } }} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:8, padding:"8px 12px", color:"var(--sc-text)", fontSize:13, outline:"none", cursor:"pointer" }}>
                     {Object.entries(rangeLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}
                   </select>
+                  </div>
                 </div>
                 {REPORT_GUIDE[reportType] && <div data-report-guide style={{ fontSize:13, color:"var(--sc-text-2)", marginTop:-12, marginBottom:16 }}>{REPORT_GUIDE[reportType]}</div>}
                 {/* C441 — a custom range whose start is after its end matches nothing and read as "$0.00" with no explanation */}

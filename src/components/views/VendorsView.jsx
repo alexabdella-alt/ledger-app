@@ -351,7 +351,7 @@ export default function VendorsView() {
                       return (
                         <div key={v.id||v.name} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"hidden" }}>
                           {/* Header row */}
-                          <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
+                          <div className="sc-rowcard" style={{ padding:"16px 20px", display:"flex", alignItems:"center", gap:14 }}>
                             <VendorAvatar vendor={v} size={44} radius={12} fontSize={15} onClick={()=>setSelectedContact(v)} />
                             <div onClick={()=>setSelectedContact(v)} style={{ flex:1, minWidth:0, cursor:"pointer" }}>
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
@@ -368,7 +368,7 @@ export default function VendorsView() {
                                 {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
                               </div>
                             </div>
-                            <div style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
+                            <div className="sc-rowcard-end" style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
                               {paidYTD>0 && <div style={{ textAlign:"right" }}>
                                 <div style={{ fontSize:11, color:"var(--sc-text-2)" }}>PAID YTD</div>
                                 <div style={{ fontSize:16, fontWeight:700, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{fmt(paidYTD)}</div>
