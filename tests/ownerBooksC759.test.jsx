@@ -60,6 +60,8 @@ describe("C761 — Reports shows ONE line", () => {
   it("★★ loading or a failed read shows nothing — never a claim about a read that didn't happen", () => {
     expect(renderToStaticMarkup(<MonthStatusView state={{ loading: true }} />)).toBe("");
     expect(renderToStaticMarkup(<MonthStatusView state={{ loading: false, failed: ["x"] }} />)).toBe("");
+    // a PARTLY failed read can still carry a report — it must not be read as "matched"
+    expect(renderToStaticMarkup(<MonthStatusView state={{ loading: false, failed: ["bank_statements"], report: [{ status: "complete", months: [m("2026-10", "complete")] }] }} now={NOW} />)).toBe("");
   });
   it("★ the assistant's guide says the same thing", () => {
     const g = readFileSync("supabase/functions/ai-proxy/aiProfiles.js", "utf8");
