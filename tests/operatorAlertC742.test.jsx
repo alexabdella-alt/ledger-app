@@ -48,15 +48,15 @@ describe("which status changes alert the operator", () => {
 describe("the operator's top-bar badge", () => {
   const rep = (statuses) => ({ report: statuses.map((s, i) => ({ companyId: `c${i}`, name: `Co ${i}`, status: s, items: [], months: [] })) });
   it("★ says how many clients have something missing; nothing when none do", () => {
-    expect(operatorBadgeState(rep(["problem", "problem", "complete"]))).toEqual({ tone: "problem", text: "⚠ 2 clients need you" });
-    expect(operatorBadgeState(rep(["problem"]))).toEqual({ tone: "problem", text: "⚠ 1 client needs you" });
+    expect(operatorBadgeState(rep(["problem", "problem", "complete"]))).toEqual({ tone: "problem", text: "⚠ 2 clients need you", short: "⚠ 2" });
+    expect(operatorBadgeState(rep(["problem"]))).toEqual({ tone: "problem", text: "⚠ 1 client needs you", short: "⚠ 1" });
     expect(operatorBadgeState(rep(["attention", "complete"]))).toBe(null);
   });
   it("★ a check that couldn't run says so — never all-clear", () => {
-    expect(operatorBadgeState({ failed: ["uploads (boom)"] })).toEqual({ tone: "unknown", text: "Couldn't check clients" });
+    expect(operatorBadgeState({ failed: ["uploads (boom)"] })).toEqual({ tone: "unknown", text: "Couldn't check clients", short: "Couldn't check" });
     expect(operatorBadgeState({ loading: true })).toBe(null);
   });
   it("only the platform admin sees it, and not while previewing as the owner", () => {
-    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/\{isPlatformAdmin && !previewAsOwner && <span className="sc-hide-narrow"><OperatorAlertBadge supabase=\{supabase\} onOpen=\{\(\) => setView\("admin"\)\} \/><\/span>\}/);
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/\{isPlatformAdmin && !previewAsOwner && <OperatorAlertBadge supabase=\{supabase\} onOpen=\{\(\) => setView\("admin"\)\} \/>\}/);   // C746 — no longer wrapped in sc-hide-narrow
   });
 });

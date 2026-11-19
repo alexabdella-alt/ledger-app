@@ -36,7 +36,7 @@ describe("C585 — a phone layout for the signed-in app", () => {
     expect(app).toMatch(/<nav aria-label="Main" className="sc-sidenav"/);
     expect(app).toMatch(/className="sc-rise sc-page"/);
     expect(app).toMatch(/className="sc-chat-panel"/);
-    expect((app.match(/className="sc-hide-narrow"/g) || []).length).toBe(3);   // the email, the word "Settings", and (C742) the operator's alert badge
+    expect((app.match(/className="sc-hide-narrow"/g) || []).length).toBe(2);   // the email and the word "Settings" (C746: the operator badge now shows a short form on a phone instead of hiding)
   });
   it("the screen you are on is kept in sight in the menu strip", () => {
     expect(app).toMatch(/document\.querySelector\("\.sc-sidenav \.sc-navtab\.active"\)\?\.scrollIntoView\(\{ block: "nearest", inline: "center" \}\)/);

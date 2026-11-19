@@ -9,7 +9,7 @@ import { loadCompleteness, CompletenessTab } from "../src/components/views/Admin
 // A fake supabase: from(table).select().in().order().range(a,b) → { data, error }
 const fake = (tables, { failOn = null, pageSize = 1000 } = {}) => ({
   from: (t) => {
-    const q = { select: () => q, in: () => q, order: () => q,
+    const q = { select: () => q, in: () => q, order: () => q, is: () => q, neq: () => q,
       range: async (a, b) => (t === failOn ? { data: null, error: { message: "permission denied" } } : { data: (tables[t] || []).slice(a, b + 1), error: null }) };
     return q;
   },

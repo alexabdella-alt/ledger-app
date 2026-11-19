@@ -54,7 +54,7 @@ const placeholderAccount = (b) => {
 };
 
 export function completenessReport({
-  companies = [], intake = [], accounts = [], statements = [], openLines = [], recons = [], signoffs = [],
+  companies = [], intake = [], accounts = [], statements = [], openLines = [], recons = [], signoffs = [], entries = [],
   now = new Date(), monthsBack = 6, stuckMinutes = STUCK_MINUTES,
 } = {}) {
   const today = localYmd(now);
@@ -66,6 +66,14 @@ export function completenessReport({
   const liveStatements = (statements || []).filter((s) => s && s.status !== "superseded" && s.period_start && s.period_end);
   const stmtBy = by(liveStatements, "company_id"), linesBy = by(openLines, "company_id"), reconBy = by(recons, "company_id");
   const stmtById = new Map(liveStatements.map((s) => [String(s.id), s]));
+  // ★ C746 — a company's books may have come in without an upload (starting balances, typed in,
+  // imported). Each company's earliest entry month: books exist, and when they start.
+  const firstEntryBy = new Map();
+  for (const e of entries || []) {
+    if (!e || !isYm(ym(e.entry_date))) continue;
+    const k = String(e.company_id), m = ym(e.entry_date);
+    if (!firstEntryBy.has(k) || m < firstEntryBy.get(k)) firstEntryBy.set(k, m);
+  }
 
   return (companies || []).filter(Boolean).map((co) => {
     const cid = String(co.id);
@@ -86,10 +94,12 @@ export function completenessReport({
     // ── 2. The bank backstop ──
     const stmts = stmtBy.get(cid) || [];
     const accts = (accountsBy.get(cid) || []).filter((a) => !placeholderAccount(a) || stmts.some((s) => String(s.bank_account_id) === String(a.id)));
-    const companyStart = isYm(ym(co.cutoff_date)) ? ym(co.cutoff_date) : [...arrivals.map((r) => ym(r.received_at)), ...stmts.map((s) => ym(s.period_start))].filter(isYm).sort()[0] || null;
+    const firstEntry = firstEntryBy.get(cid) || null;
+    const hasBooks = arrivals.length > 0 || !!firstEntry;
+    const companyStart = isYm(ym(co.cutoff_date)) ? ym(co.cutoff_date) : [...arrivals.map((r) => ym(r.received_at)), ...stmts.map((s) => ym(s.period_start)), firstEntry].filter(isYm).sort()[0] || null;
     const checkedMonths = new Set();   // months where at least one account's statement fully covered the month
     if (!stmts.length) {
-      if (arrivals.length) add("problem", null, "No bank statement yet — nothing checks these books against the bank.", "no_statements");
+      if (hasBooks) add("problem", null, "No bank statement yet — nothing checks these books against the bank.", "no_statements");
     } else {
       const firstStmtMonth = stmts.map((s) => ym(s.period_start)).sort()[0];
       if (companyStart && companyStart < firstStmtMonth) {
@@ -134,7 +144,7 @@ export function completenessReport({
     });
     const status = items.some((i) => i.severity === "problem") ? "problem"
       : items.some((i) => i.severity === "attention") ? "attention"
-      : (!arrivals.length && !stmts.length) ? "empty" : "complete";
+      : (!hasBooks && !stmts.length) ? "empty" : "complete";
     items.sort((a, b) => (a.severity === b.severity ? String(b.period || "").localeCompare(String(a.period || "")) : a.severity === "problem" ? -1 : 1));
     return { companyId: cid, name: co.name || "Unnamed company", status, arrived: arrivals.length, items, months };
   }).sort((a, b) => ({ problem: 0, attention: 1, complete: 2, empty: 3 }[a.status] - { problem: 0, attention: 1, complete: 2, empty: 3 }[b.status]) || a.name.localeCompare(b.name));

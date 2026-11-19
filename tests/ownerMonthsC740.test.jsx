@@ -52,7 +52,7 @@ describe("the owner's months", () => {
 
 describe("the month list on Reports", () => {
   it("★ a read that fails says so — never shown as complete", async () => {
-    const fake = { from: () => { const q = { select: () => q, in: () => q, order: () => q, eq: () => q, range: async () => ({ data: null, error: { message: "boom" } }) }; return q; } };
+    const fake = { from: () => { const q = { select: () => q, in: () => q, order: () => q, is: () => q, neq: () => q, eq: () => q, range: async () => ({ data: null, error: { message: "boom" } }) }; return q; } };
     const st = await loadCompleteness(fake, NOW, { companyId: "c1" });
     const h = renderToStaticMarkup(<MonthStatusView state={st} />);
     expect(h).toContain('data-month-status="failed"');
@@ -61,9 +61,9 @@ describe("the month list on Reports", () => {
   });
   it("one company only: every table is scoped to it", async () => {
     const calls = [];
-    const fake = { from: (t) => { const q = { select: () => q, in: () => q, order: () => q, eq: (c, v) => { calls.push([t, c, v]); return q; }, range: async () => ({ data: [], error: null }) }; return q; } };
+    const fake = { from: (t) => { const q = { select: () => q, in: () => q, order: () => q, is: () => q, neq: () => q, eq: (c, v) => { calls.push([t, c, v]); return q; }, range: async () => ({ data: [], error: null }) }; return q; } };
     await loadCompleteness(fake, NOW, { companyId: "c1" });
-    expect(calls.map(([t, c]) => `${t}.${c}`).sort()).toEqual(["bank_accounts.company_id", "bank_statement_lines.company_id", "bank_statements.company_id", "companies.id", "document_intake.company_id", "period_signoffs.company_id", "reconciliations.company_id"]);
+    expect(calls.map(([t, c]) => `${t}.${c}`).sort()).toEqual(["bank_accounts.company_id", "bank_statement_lines.company_id", "bank_statements.company_id", "companies.id", "document_intake.company_id", "journal_entries.company_id", "period_signoffs.company_id", "reconciliations.company_id"]);
   });
   it("renders the lines, newest first", () => {
     const st = { report: completenessReport(base) };

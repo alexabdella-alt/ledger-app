@@ -214,11 +214,15 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
    ONLY at 760px and under, so a laptop or a tablet held sideways is untouched.
    `!important` throughout because the app styles inline, and inline wins otherwise.
    ═══════════════════════════════════════════════════════════════════════════ */
+/* C746 — a short form shown only at 760px and under, beside a full form hidden there */
+.sc-show-narrow { display: none; }
+
 @media (max-width: 760px) {
   /* top bar: logo, company, bell, gear, sign out — no email, no "Settings" word */
   .sc-topbar { padding: 0 12px !important; height: 54px !important; }
   .sc-topbar > div { gap: 8px !important; min-width: 0; }
   .sc-hide-narrow { display: none !important; }
+  .sc-show-narrow { display: inline !important; }
 
   /* the side menu becomes one row you swipe sideways */
   .sc-shell-body { flex-direction: column !important; }

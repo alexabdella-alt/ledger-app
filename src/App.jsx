@@ -9793,7 +9793,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                   Only a reviewer seat can see it, and while it's on the label says
                   plainly that this is a preview so nobody mistakes it for a lockout. */}
               {/* ★ C742 — the operator's alert: a client with something missing, without going to look */}
-              {isPlatformAdmin && !previewAsOwner && <span className="sc-hide-narrow"><OperatorAlertBadge supabase={supabase} onOpen={() => setView("admin")} /></span>}
+              {isPlatformAdmin && !previewAsOwner && <OperatorAlertBadge supabase={supabase} onOpen={() => setView("admin")} />}   {/* C746 — shown on a phone too (short form) */}
               {canPreviewAsOwner && (
                 <button onClick={()=>setPreviewAsOwner(v=>!v)}
                   title={previewAsOwner ? "Return to your full view" : "See exactly what the business owner sees"}

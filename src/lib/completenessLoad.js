@@ -20,7 +20,7 @@ export async function pageAll(build) {
 
 export async function loadCompleteness(supabase, now = new Date(), { companyId = null } = {}) {
   const scope = (q, col = "company_id") => (companyId ? q.eq(col, companyId) : q);
-  const [companies, intake, accounts, statements, openLines, recons, signoffs] = await Promise.all([
+  const [companies, intake, accounts, statements, openLines, recons, signoffs, entries] = await Promise.all([
     pageAll(() => scope(supabase.from("companies").select("id, name, cutoff_date"), "id").order("id")),
     pageAll(() => scope(supabase.from("document_intake").select("company_id, status, received_at, updated_at, filename, detail")).order("id")),
     pageAll(() => scope(supabase.from("bank_accounts").select("id, company_id, name, active, institution, last4, current_balance, created_at, updated_at")).order("id")),
@@ -28,10 +28,12 @@ export async function loadCompleteness(supabase, now = new Date(), { companyId =
     pageAll(() => scope(supabase.from("bank_statement_lines").select("company_id, statement_id, line_date, status").in("status", ["pending", "excepted"])).order("id")),
     pageAll(() => scope(supabase.from("reconciliations").select("company_id, account_id, status, statement_balance, statement_balance_verified, period_start, period_end")).order("id")),
     pageAll(() => scope(supabase.from("period_signoffs").select("company_id, period, revoked_at")).order("id")),
+    // C746 — books that came in some other way (starting balances, typed in, imported) count as books
+    pageAll(() => scope(supabase.from("journal_entries").select("company_id, entry_date").is("deleted_at", null).neq("status", "voided")).order("id")),
   ]);
-  const parts = { companies, uploads: intake, "bank accounts": accounts, "bank statements": statements, "statement lines": openLines, "bank matches": recons, "closed months": signoffs };
+  const parts = { companies, uploads: intake, "bank accounts": accounts, "bank statements": statements, "statement lines": openLines, "bank matches": recons, "closed months": signoffs, "journal entries": entries };
   const failed = Object.entries(parts).filter(([, r]) => !r.ok).map(([k, r]) => `${k} (${r.error})`);
   if (failed.length) return { loading: false, failed };
-  const report = completenessReport({ companies: companies.rows, intake: intake.rows, accounts: accounts.rows, statements: statements.rows, openLines: openLines.rows, recons: recons.rows, signoffs: signoffs.rows, now });
+  const report = completenessReport({ companies: companies.rows, intake: intake.rows, accounts: accounts.rows, statements: statements.rows, openLines: openLines.rows, recons: recons.rows, signoffs: signoffs.rows, entries: entries.rows, now });
   return { loading: false, report, at: now };
 }
