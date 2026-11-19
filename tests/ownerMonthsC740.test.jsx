@@ -51,13 +51,12 @@ describe("the owner's months", () => {
 });
 
 describe("the month list on Reports", () => {
-  it("★ a read that fails says so — never shown as complete", async () => {
+  it("★ a read that fails is never shown as matched (C761: the line is simply absent)", async () => {
     const fake = { from: () => { const q = { select: () => q, in: () => q, order: () => q, is: () => q, neq: () => q, eq: () => q, range: async () => ({ data: null, error: { message: "boom" } }) }; return q; } };
     const st = await loadCompleteness(fake, NOW, { companyId: "c1" });
     const h = renderToStaticMarkup(<MonthStatusView state={st} />);
-    expect(h).toContain('data-month-status="failed"');
-    expect(h).toContain("not a sign anything is wrong");
-    expect(h).not.toContain("complete");
+    expect(st.failed && st.failed.length).toBeTruthy();
+    expect(h).toBe("");   // C761 — one quiet line on Reports: on a failed read it says NOTHING, never "match your bank"
   });
   it("one company only: every table is scoped to it", async () => {
     const calls = [];
@@ -65,12 +64,11 @@ describe("the month list on Reports", () => {
     await loadCompleteness(fake, NOW, { companyId: "c1" });
     expect(calls.map(([t, c]) => `${t}.${c}`).sort()).toEqual(["bank_accounts.company_id", "bank_statement_lines.company_id", "bank_statements.company_id", "companies.id", "document_intake.company_id", "journal_entries.company_id", "period_signoffs.company_id", "reconciliations.company_id"]);
   });
-  it("renders the owner's books card (C759: 'Your books' — what we need, and what's matched)", () => {
+  it("renders one line on Reports (C761: how far the books match the bank)", () => {
     const st = { report: completenessReport(base) };
-    const h = renderToStaticMarkup(<MonthStatusView state={st} now={NOW} />);
-    expect(h).toContain("Your books");
+    const h = renderToStaticMarkup(<MonthStatusView state={st} now={NOW} />).replace(/&#x27;/g, "'");
+    expect(h).toMatch(/Your books (match your bank through|aren't matched to your bank yet)/);
     expect(h).not.toContain("Your months");
-    expect(h).toMatch(/data-books-(need|nothing)/);
   });
   it("★ the owner's Reports shows the months, not the sign-off panel", () => {
     const rv = readFileSync("src/components/views/ReportsView.jsx", "utf8");

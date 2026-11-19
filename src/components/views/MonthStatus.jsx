@@ -1,51 +1,32 @@
 import React from "react";
 import { useERP } from "../ERPContext";
 import { loadCompleteness } from "../../lib/completenessLoad";
-import { ownerBooksStatus, OWNER_BOOKS_COPY } from "../../lib/completeness";
+import { ownerBooksStatus, REPORTS_TRUST_COPY } from "../../lib/completeness";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ★ C740 — THE OWNER'S MONTHS. Replaces the sign-off panel on Reports (operator, 2026-11-18: "I don't
-// think this seems right for that 'couple things need a look' stuff"). One line per month, read from
-// the same completeness report as the operator's page: complete, waiting on you (only what the owner
-// can do — drop a statement), or our team finishing it. The owner never signs anything off; the
-// operator closes months. A read that fails says so — it is never shown as "complete".
+// ★ C740 → C759 → C761 — WHAT AN OWNER SEES OF THEIR MONTHS, read from the same completeness report as
+// the operator's page. C740 listed every month (complete / closed / our team finishing); C759 made it
+// "what we need from you" + "matched"; C761 moved the asking to Home and left Reports one line — how
+// far the figures match the bank. The owner never signs anything off and never sees our process.
 // ─────────────────────────────────────────────────────────────────────────────
-// ★ C759 — "Your books": what we need from the owner (only things they can do), and one line each for
-// the months that match the bank and the months our team is still checking. No "closed", no "complete
-// vs closed", nothing about sign-off, and nothing about the month that isn't over (lib/completeness.js
-// ownerBooksStatus). The read failing says so — never shown as fine.
+// ★ C761 — ON REPORTS, ONE LINE: how far the figures match the bank, and — if we need something —
+// a pointer to Home, where the asking lives. Nothing while loading or if the read failed (it never
+// claims the books match on a read it didn't make). No "our team is checking": that is our process,
+// not the owner's business.
 const ymNow = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
-export function MonthStatusView({ state, now = new Date(), onUpload = null }) {
-  const card = { background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "16px 20px", marginBottom: 20 };
-  if (!state || state.loading) return <div data-month-status="loading" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>Checking your books…</div>;
-  if (state.failed) return <div data-month-status="failed" style={{ ...card, fontSize: 13, color: "var(--sc-text-2)" }}>We couldn't check your books just now — that's not a sign anything is wrong. Reload the page to try again.</div>;
+export function MonthStatusView({ state, now = new Date(), onSeeHome = null }) {
+  if (!state || state.loading || state.failed) return null;
   const r = (state.report || [])[0];
   if (!r || r.status === "empty") return null;
   const st = ownerBooksStatus(r.months || [], { current: ymNow(now) });
-  if (!st.need.length && !st.matched && !st.reviewing) return null;
-  const row = { display: "flex", gap: 10, alignItems: "baseline", padding: "6px 0", fontSize: 13, color: "var(--sc-text)" };
+  const ok = !!st.matchedThrough;
   return (
-    <div data-month-status="ready" style={card}>
-      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", marginBottom: 6 }}>{OWNER_BOOKS_COPY.title}</div>
-      {st.need.length ? (
-        <div data-books-need>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--sc-warning)", margin: "2px 0 2px" }}>{OWNER_BOOKS_COPY.needHead}</div>
-          {st.need.map((l, i) => (
-            <div key={i} data-month-line="you" style={row}>
-              <span style={{ color: "var(--sc-warning)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>•</span>
-              <span>{l.text}</span>
-            </div>
-          ))}
-          {onUpload && <button data-books-upload onClick={onUpload} style={{ marginTop: 6, marginLeft: 26, padding: "7px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", background: "var(--sc-gold)", color: "var(--sc-on-accent)", cursor: "pointer" }}>{OWNER_BOOKS_COPY.upload}</button>}
-        </div>
-      ) : (
-        <div data-books-nothing style={row}><span style={{ color: "var(--sc-success)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>✓</span><span>{OWNER_BOOKS_COPY.nothing}</span></div>
-      )}
-      {(st.matched || st.reviewing) && <div style={{ borderTop: "1px solid var(--sc-surface-2)", marginTop: 8, paddingTop: 4 }}>
-        {st.matched && <div data-month-line="matched" style={row}><span style={{ color: "var(--sc-success)", fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>✓</span><span>{OWNER_BOOKS_COPY.matched(st.matched)}</span></div>}
-        {st.reviewing && <div data-month-line="team" style={{ ...row, color: "var(--sc-text-2)" }}><span style={{ fontWeight: 700, width: 16, flexShrink: 0, textAlign: "center" }}>…</span><span>{OWNER_BOOKS_COPY.reviewing(st.reviewing)}</span></div>}
-      </div>}
+    <div data-month-status="ready" data-matched-through={st.matchedThrough || ""} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "var(--sc-text-2)", marginBottom: 14 }}>
+      <span style={{ color: ok ? "var(--sc-success)" : "var(--sc-text-2)", fontWeight: 700 }}>{ok ? "✓" : "•"}</span>
+      <span style={{ color: "var(--sc-text)" }}>{ok ? REPORTS_TRUST_COPY.through(st.matchedThrough) : REPORTS_TRUST_COPY.none}</span>
+      {st.need.length > 0 && <span>{REPORTS_TRUST_COPY.needs}</span>}
+      {st.need.length > 0 && onSeeHome && <button data-books-see-home onClick={onSeeHome} style={{ background: "none", border: "none", padding: 0, color: "var(--sc-gold)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{REPORTS_TRUST_COPY.seeHome}</button>}
     </div>
   );
 }
@@ -76,5 +57,5 @@ export function statementNeedsFrom(state, now = new Date()) {
 export default function MonthStatus() {
   const { setView } = useERP();
   const state = useCompletenessState(true);
-  return <MonthStatusView state={state} onUpload={setView ? () => setView("home") : null} />;
+  return <MonthStatusView state={state} onSeeHome={setView ? () => setView("home") : null} />;
 }

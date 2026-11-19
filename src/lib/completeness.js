@@ -215,46 +215,38 @@ export function ownerMonthLines(months = []) {
   });
 }
 
-// ★ C759 — "YOUR BOOKS", NOT "YOUR MONTHS". The month list showed an owner our internal states —
-// "complete" vs "closed 🔒" vs "our team is finishing this month" (said even of the month not yet
-// over) — the old sign-off idea leaking through (operator, 2026-11-19: "stuck between the old thing
-// where the accountant signed off and the new thing"). An owner needs two answers: is anything
-// needed from me, and are my books OK. So:
-//   need      — only what the owner can do (drop a statement), grouped into runs as before;
-//   matched   — the months that match the bank (complete and closed are the same thing to an owner);
-//   reviewing — past months our team is still checking, said once with "nothing needed from you".
-// The month in progress isn't mentioned — it isn't over. Pure; reads the same report as the operator.
-export function monthRangesText(periods = []) {
-  const ps = [...new Set((periods || []).filter(isYm))].sort();
-  if (!ps.length) return "";
-  const runs = [];
-  for (const p of ps) {
-    const last = runs[runs.length - 1];
-    if (last && nextMonth(last[1]) === p) last[1] = p; else runs.push([p, p]);
-  }
-  const label = ([a, b]) => {
-    if (a === b) return monthName(a);
-    return a.slice(0, 4) === b.slice(0, 4) ? `${monthName(a).replace(/ \d{4}$/, "")} – ${monthName(b)}` : `${monthName(a)} – ${monthName(b)}`;
-  };
-  const parts = runs.map(label);
-  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
-
+// ★ C759 / C761 — WHAT THE OWNER SEES OF THEIR MONTHS. C759 turned the month list (complete / closed 🔒
+// / "our team is finishing") into "what we need from you" + "matched to your bank". C761 (operator:
+// "duplicative" and "in the middle of 2 business models"): the ASKING lives on Home only
+// (`need`, below), Reports keeps ONE line saying how far the figures match the bank
+// (`matchedThrough`), and the review layer's process ("our team is checking…") is not shown to an
+// owner at all — our team sees it on Completeness. Pure; reads the same report as the operator.
 export function ownerBooksStatus(months = [], { current = "" } = {}) {
   const newestFirst = [...(months || [])].filter((m) => m && isYm(m.period)).sort((a, b) => b.period.localeCompare(a.period));   // the report lists them oldest first
   const withLine = newestFirst.map((m) => ({ m, l: ownerMonthLine(m) })).filter((x) => x.l);
   const need = ownerMonthLines(withLine.filter((x) => x.l.tone === "you").map((x) => x.m));
-  const matched = withLine.filter((x) => x.l.tone === "done" || x.l.tone === "closed").map((x) => x.m.period);
-  const reviewing = withLine.filter((x) => x.l.tone === "team" && x.m.status !== "in_progress" && x.m.period !== current).map((x) => x.m.period);
-  return { need, matched: monthRangesText(matched), reviewing: monthRangesText(reviewing) };
+  return { need, matchedThrough: matchedThrough(months, { current }) };
 }
 
-export const OWNER_BOOKS_COPY = {
-  title: "Your books",
-  needHead: "We need from you",
-  nothing: "Nothing needed from you right now.",
-  matched: (r) => `Matched to your bank: ${r}.`,
-  reviewing: (r) => `Our team is checking ${r} — nothing needed from you.`,
-  upload: "Upload on Home →",
+// ★ C761 — HOW FAR THE OWNER'S FIGURES CAN BE TRUSTED: the last month such that EVERY month from the
+// start of their books up to it matches the bank (a gap stops the run — "through March" over a
+// missing February would overstate it). The month in progress is never counted. null = none yet.
+export function matchedThrough(months = [], { current = "" } = {}) {
+  const asc = [...(months || [])].filter((m) => m && isYm(m.period) && m.status !== "before" && m.period !== current && m.status !== "in_progress")
+    .sort((a, b) => a.period.localeCompare(b.period));
+  let through = null;
+  for (const m of asc) {
+    const t = ownerMonthLine(m);
+    if (t && (t.tone === "done" || t.tone === "closed")) through = m.period; else break;
+  }
+  return through;
+}
+
+// The one line on Reports (C761) — Home is where we ASK; Reports only says how far the figures are checked.
+export const REPORTS_TRUST_COPY = {
+  through: (p) => `Your books match your bank through ${monthName(p)}.`,
+  none: "Your books aren't matched to your bank yet.",
+  needs: "We need a few things from you to finish this.",
+  seeHome: "See Home →",
 };
 
