@@ -70,3 +70,12 @@ describe("C753 — the owner's tab bar", () => {
     expect(app).toMatch(/<button className="sc-chat-fab"/);
   });
 });
+
+describe("C753 — Money's three cards on a phone", () => {
+  it("★★ one row of three, the description and arrow dropped, the count in the corner", () => {
+    expect(block).toMatch(/\.sc-page \[data-money-links\] \{ grid-template-columns: repeat\(3, 1fr\) !important;/);
+    expect(block).toMatch(/\.sc-page \[data-money-links\] \.sc-mlink-sub, \.sc-page \[data-money-links\] \.sc-mlink-arrow \{ display: none !important; \}/);
+    const mv = readFileSync("src/components/views/MoneyView.jsx", "utf8");
+    for (const c of ["sc-mlink-sub", "sc-mlink-text", "sc-mlink-arrow"]) expect(mv).toContain(`className="${c}"`);
+  });
+});

@@ -45,12 +45,12 @@ export default function MoneyView() {
           <button key={l.view} data-money-link={l.view} onClick={() => setView(l.view)}
             style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "12px 16px", cursor: "pointer", fontFamily: "var(--sc-font-ui)", color: "var(--sc-text)" }}>
             <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--sc-gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{l.icon}</span>
-            <span style={{ minWidth: 0, flex: 1 }}>
+            <span className="sc-mlink-text" style={{ minWidth: 0, flex: 1 }}>
               <span style={{ display: "block", fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.label}</span>
-              <span style={{ display: "block", fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{l.sub}</span>
+              <span className="sc-mlink-sub" style={{ display: "block", fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{l.sub}</span>
             </span>
             {l.count ? <span data-money-link-count style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, color: "var(--sc-text-2)", background: "var(--sc-surface-2)", borderRadius: 12, padding: "2px 9px", fontFamily: "'DM Mono', monospace" }}>{l.count}</span>
-              : <span aria-hidden="true" style={{ color: "var(--sc-text-mut)", fontSize: 16 }}>›</span>}
+              : <span className="sc-mlink-arrow" aria-hidden="true" style={{ color: "var(--sc-text-mut)", fontSize: 16 }}>›</span>}
           </button>
         ))}
       </div>

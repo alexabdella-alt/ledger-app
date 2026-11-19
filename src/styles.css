@@ -319,6 +319,13 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   .sc-owner-nav:not(:has([data-navsec="settings"])) { border-bottom: none !important; }
   .sc-owner-nav ~ #main-content .sc-page { padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important; }
 
+  /* Money's Documents · Vendors · Customers: one compact row of three on a phone, not three tall cards */
+  .sc-page [data-money-links] { grid-template-columns: repeat(3, 1fr) !important; gap: 8px !important; }
+  .sc-page [data-money-links] > button { flex-direction: column !important; align-items: center !important; text-align: center !important;
+    gap: 6px !important; padding: 12px 4px 10px !important; position: relative; }
+  .sc-page [data-money-links] .sc-mlink-text { flex: none !important; width: 100%; }
+  .sc-page [data-money-links] .sc-mlink-sub, .sc-page [data-money-links] .sc-mlink-arrow { display: none !important; }
+  .sc-page [data-money-links] [data-money-link-count] { position: absolute; top: 6px; right: 6px; font-size: 11px !important; padding: 1px 6px !important; }
   body:has(.sc-owner-nav) .sc-chat-fab { display: none !important; }
   body:has(.sc-owner-nav) .sc-chat-panel { bottom: calc(66px + env(safe-area-inset-bottom)) !important;
     height: min(600px, calc(100dvh - 140px)) !important; }
