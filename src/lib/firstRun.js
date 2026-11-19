@@ -82,6 +82,11 @@ export const DROPZONE_COPY = {
   sub: "Bills, receipts, bank statements, contracts — we read it and file it in your books",
   choose: "or click to choose files from your computer or phone",
   reading: "READING YOUR FILES…",
+  // C736 — on a phone: the camera, and the photo library (where screenshots live)
+  phoneTitle: "Add a receipt or bill",
+  camera: "📷 Take a photo",
+  library: "Choose a screenshot or file",
+  phoneSub: "Snap a receipt, or pick a screenshot of a bill or payment — we'll read it and add it to your books",
 };
 
 // ★ C735 — the invite, emailed from the owner's own mail app (no sending domain needed): a mailto

@@ -19,7 +19,7 @@ describe("★ the drop box and a view-only teammate", () => {
     expect(h).not.toMatch(/data-view-only-upload/);
   });
   it("and a file a viewer drops anyway is refused up front, before anything is queued", () => {
-    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/const handleUniversalUpload = \(files\) => \{\s*\n\s*if \(!files\?\.length\) return;[\s\S]{0,400}if \(isViewer\) \{ showNotification\(VIEW_ONLY_UPLOAD_COPY, "error"\); return; \}/);
+    expect(readFileSync("src/App.jsx", "utf8")).toMatch(/const handleUniversalUpload = async \(files\) => \{\s*\n\s*if \(!files\?\.length\) return;[\s\S]{0,400}if \(isViewer\) \{ showNotification\(VIEW_ONLY_UPLOAD_COPY, "error"\); return; \}/);
     expect(VIEW_ONLY_UPLOAD_COPY).toMatch(/view-only access/);
   });
 });

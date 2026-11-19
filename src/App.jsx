@@ -13,6 +13,7 @@ import { useAccounts } from "./hooks/useAccounts";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType, calcASC842, isCancelledOrCancelling, settledBases, categoryForCode, entryAmountsByBase, paidByBase } from "./lib/gl";
 import { initials, vendorColor, deriveDueDate, todayLocal, ymdLocal, addMonthsClampedYMD, addDaysYMD, fmtSignedMoney, fmtApprox, fmtMoney, fmtDate } from "./lib/format";
 import { validateUpload } from "./lib/uploadGuard";
+import { shrinkImageFile, HEIC_UNREADABLE_COPY } from "./lib/phoneImage";
 import { classifyIntent, runAIBrain, okAIResponse, callAIProxy } from "./lib/ai";
 import { buildMonthlyReport, priorPeriod, formatPeriod, computeRevenue, computeExpenses, liveEntries, glAccountBalance, glCashOnHand, cashOnHandCodes, cardBalanceOwed, openPayablesGL, isLiveEntry } from "./lib/reports";
 import { loadClientProfile, learnFromBooking, learnFromCorrection, persistClientProfile, emptyProfile, addCustomRule, recallVendor } from "./lib/clientProfile";
@@ -5740,16 +5741,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
     return res;
   };
 
-  const handleUniversalUpload = (files) => {
+  const handleUniversalUpload = async (files) => {
     if (!files?.length) return;
     // ★ C681 — a view-only teammate cannot record entries (migration 098 refuses it), so every file
     // they drop would end in "couldn't save". Said once, up front, and nothing is queued.
     if (isViewer) { showNotification(VIEW_ONLY_UPLOAD_COPY, "error"); return; }
+    // ★ C736 — a phone photo (often 3–6 MB, sometimes HEIC) is redrawn as a readable JPEG BEFORE the
+    // guard, so it is neither too big for the reader nor turned away at the door (lib/phoneImage.js).
+    const incoming = await Promise.all(Array.from(files).map(f => shrinkImageFile(f)));
     // Size + type guard per file (CR-34); reject oversized/wrong-type before queueing.
-    const checked = Array.from(files).map(f => ({ f, v: validateUpload(f, "universal") }));
+    const checked = incoming.map(f => ({ f, v: validateUpload(f, "universal") }));
     const validFiles = checked.filter(c => c.v.ok).map(c => c.f);
     const rejected = checked.filter(c => !c.v.ok);
-    if (rejected.length) showNotification(rejected[0].v.error, "error");
+    if (rejected.length) showNotification(/\.(heic|heif)$/i.test(rejected[0].f?.name || "") ? HEIC_UNREADABLE_COPY : rejected[0].v.error, "error");
     if (!validFiles.length) return;
 
     // Store File objects in ref (survives view changes), add to queue with status "pending"

@@ -537,6 +537,8 @@ export default function DashboardView() {
                 .sc-dropzone .sc-dropzone-icon{ transition: opacity .18s ease, transform .18s ease; }
                 @keyframes scDropPulse{0%,100%{box-shadow:0 0 0 4px rgba(79,70,229,0.10),0 10px 32px rgba(79,70,229,0.16)}50%{box-shadow:0 0 0 9px rgba(79,70,229,0.05),0 10px 36px rgba(79,70,229,0.24)}}
                 .sc-dropzone.dragging{ animation:scDropPulse 1.3s ease-in-out infinite; }
+                .sc-phone-only{ display:none !important; }
+                @media (pointer: coarse){ .sc-phone-only{ display:flex !important; } .sc-desk-only{ display:none !important; } .sc-dropzone{ padding:28px 18px !important; } }
               `}</style>
               {/* C681 — a view-only teammate sees why there's no drop box, not one that fails */}
               {isViewer ? (
@@ -555,17 +557,29 @@ export default function DashboardView() {
                   background:universalDragOver?"var(--sc-bg)":"var(--sc-surface)",
                   marginBottom:20,
                 }}>
-                <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>handleUniversalUpload(e.target.files)} />
+                <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{ handleUniversalUpload(e.target.files); e.target.value=""; }} />
+                {/* ★ C736 — on a phone, the camera opens straight away (screenshots: the other button) */}
+                <input id="universal-camera" type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{ handleUniversalUpload(e.target.files); e.target.value=""; }} />
                 <div className="sc-dropzone-icon" style={{ width:64, height:64, margin:"0 auto 18px", borderRadius:18, background:universalDragOver?"var(--sc-gold)":"var(--sc-gold-soft)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:universalDragOver?"var(--sc-surface)":"var(--sc-gold)", opacity: universalDragOver?1:0.92 }}>⬆</div>
-                <div style={{ fontSize:22, fontWeight:700, color:"var(--sc-text)", marginBottom:8, letterSpacing:-0.4 }}>
+                <div className="sc-desk-only" style={{ fontSize:22, fontWeight:700, color:"var(--sc-text)", marginBottom:8, letterSpacing:-0.4, justifyContent:"center" }}>
                   {universalDragOver ? DROPZONE_COPY.dragging : DROPZONE_COPY.title}
                 </div>
-                <div style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:6, lineHeight:1.5 }}>
+                <div className="sc-phone-only" style={{ fontSize:22, fontWeight:700, color:"var(--sc-text)", marginBottom:8, letterSpacing:-0.4, justifyContent:"center" }}>{DROPZONE_COPY.phoneTitle}</div>
+                <div className="sc-desk-only" style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:6, lineHeight:1.5 }}>
                   {DROPZONE_COPY.sub}
                 </div>
+                <div className="sc-phone-only" style={{ fontSize:14, color:"var(--sc-text-mut)", marginBottom:14, lineHeight:1.5, justifyContent:"center" }}>
+                  {DROPZONE_COPY.phoneSub}
+                </div>
+                <div data-phone-upload className="sc-phone-only" style={{ flexDirection:"column", gap:10, alignItems:"stretch", maxWidth:320, margin:"0 auto 14px" }}>
+                  <button type="button" data-phone-camera onClick={e=>{ e.stopPropagation(); document.getElementById("universal-camera").click(); }}
+                    style={{ padding:"14px 18px", borderRadius:12, fontSize:16, fontWeight:600, background:"var(--sc-gold)", color:"var(--sc-on-accent)", border:"none", cursor:"pointer" }}>{DROPZONE_COPY.camera}</button>
+                  <button type="button" data-phone-library onClick={e=>{ e.stopPropagation(); document.getElementById("universal-upload").click(); }}
+                    style={{ padding:"13px 18px", borderRadius:12, fontSize:15, fontWeight:600, background:"var(--sc-surface)", color:"var(--sc-text)", border:"1px solid var(--sc-border-2)", cursor:"pointer" }}>{DROPZONE_COPY.library}</button>
+                </div>
                 {/* C583 — "drop" is not something a phone can do; the box is also a button, and said nothing of it. */}
-                <div data-dropzone-choose style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:500, marginBottom:18 }}>{DROPZONE_COPY.choose}</div>
-                <div style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
+                <div data-dropzone-choose className="sc-desk-only" style={{ fontSize:13, color:"var(--sc-gold)", fontWeight:500, marginBottom:18 }}>{DROPZONE_COPY.choose}</div>
+                <div className="sc-desk-only" style={{ display:"inline-flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
                   {["PDF","JPG","PNG","CSV","XLSX"].map(f=>(
                     <span key={f} style={{ fontSize:10, fontWeight:600, color:"var(--sc-text-mut)", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border)", borderRadius:6, padding:"3px 9px", letterSpacing:0.5 }}>{f}</span>
                   ))}
