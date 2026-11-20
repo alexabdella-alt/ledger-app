@@ -368,7 +368,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                   <div style={{ fontSize: 12.5, color: "var(--sc-text)", marginBottom: sweepOffer.eligible.length ? 10 : 0 }}>{sweepOffer.sentence}</div>
                   {sweepOffer.eligible.length > 0 && (
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={runSweep} disabled={sweepBusy} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: sweepBusy ? "var(--sc-border)" : "var(--sc-accent)", color: sweepBusy ? "var(--sc-text-mut)" : "#fff", cursor: sweepBusy ? "default" : "pointer" }}>
+                      <button onClick={runSweep} disabled={sweepBusy} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, border: "none", background: sweepBusy ? "var(--sc-border)" : "var(--sc-accent)", color: sweepBusy ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: sweepBusy ? "default" : "pointer" }}>
                         {sweepBusy ? "Changing…" : `Yes, change ${sweepOffer.eligible.length === 1 ? "it" : "them"}`}
                       </button>
                       <button onClick={() => setSweepOffer(null)} disabled={sweepBusy} style={{ padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "none", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>No, just this one</button>

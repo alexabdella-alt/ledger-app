@@ -1,7 +1,9 @@
 /* =====================================================================
-   SHADOW — global design layer · "Midnight + Gold"
+   SHADOW — global design layer · "Midnight + Off-white"
    The invisible controller: a near-black canvas, dark-slate surfaces, and
-   gold reserved for money, emphasis, and CTAs. This file is the SINGLE
+   an off-white accent for emphasis and CTAs. ★ C764 — the accent was gold
+   ; the operator found it "cheesy and AI-like" (2026-11-20). The
+   `--sc-gold*` NAMES are kept so no component had to change — only values. This file is the SINGLE
    SOURCE OF TRUTH for color, type, spacing, radii, motion. Components read
    the tokens via var(--sc-*) (and the JS accessors in src/lib/theme.js).
    ===================================================================== */
@@ -23,14 +25,14 @@
   --sc-text-mut:  #7d8fa0;   /* muted / labels */
   --sc-text-ph:   #57697a;   /* placeholder / dim */
 
-  /* ---- gold (the one bold move — money, emphasis, CTAs) ---- */
-  --sc-gold:        #e8b53d;
-  --sc-gold-bright: #f6cb5b;
-  --sc-gold-deep:   #bf9226;
-  --sc-gold-soft:   rgba(232,181,61,0.12);  /* tint fills */
-  --sc-gold-line:   rgba(232,181,61,0.30);  /* tint borders */
-  --sc-gold-glow:   rgba(232,181,61,0.22);  /* hero glow */
-  --sc-on-accent:   #181206;                /* dark ink for text on gold/bright fills */
+  /* ---- accent (off-white; the token NAMES still say "gold" — C764) ---- */
+  --sc-gold:        #ecebe7;
+  --sc-gold-bright: #ffffff;
+  --sc-gold-deep:   #c9c6bf;
+  --sc-gold-soft:   rgba(236,235,231,0.08);  /* tint fills */
+  --sc-gold-line:   rgba(236,235,231,0.24);  /* tint borders */
+  --sc-gold-glow:   rgba(236,235,231,0.10);  /* hero glow */
+  --sc-on-accent:   #10151b;                 /* dark ink for text on accent fills */
 
   /* ---- semantic ---- */
   --sc-success:      #4ade80;
@@ -111,7 +113,7 @@ body {
 body::before {
   content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(900px 520px at 100% -8%, rgba(232,181,61,0.07), transparent 60%),
+    radial-gradient(900px 520px at 100% -8%, rgba(236,235,231,0.04), transparent 60%),
     radial-gradient(760px 480px at -6% 0%, rgba(74,222,128,0.035), transparent 55%);
 }
 
@@ -121,7 +123,7 @@ body::before {
 .sc-eyebrow { font-family: var(--sc-font-ui); font-size: var(--sc-fs-eyebrow); letter-spacing: var(--sc-tracking-eyebrow); text-transform: uppercase; color: var(--sc-text-mut); font-weight: 600; }
 
 /* Text selection — gold wash */
-::selection { background: rgba(232,181,61,0.26); color: #fff; }
+::selection { background: rgba(236,235,231,0.24); color: #fff; }
 
 /* Dark scrollbars */
 * { scrollbar-width: thin; scrollbar-color: #34465a transparent; }
@@ -136,7 +138,7 @@ body::before {
 /* Inputs get a gold ring on focus, app-wide */
 input:focus, textarea:focus, select:focus {
   border-color: var(--sc-gold) !important;
-  box-shadow: 0 0 0 3px rgba(232,181,61,0.16);
+  box-shadow: 0 0 0 3px rgba(236,235,231,0.14);
 }
 ::placeholder { color: var(--sc-text-ph); }
 

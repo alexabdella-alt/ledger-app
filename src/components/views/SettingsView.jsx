@@ -272,7 +272,7 @@ export default function SettingsView() {
                 {/* ★ C722 — the company row is the owner's and an admin's to change (the database refuses anyone else); a
                     view-only member or an accountant is told so here, instead of pressing Save to find out */}
                 {!["owner", "admin"].includes(userRole) && <div data-settings-readonly style={{ fontSize:12.5, color:"var(--sc-text-2)", marginBottom:8 }}>Only the owner or an admin can change the company details — you can see them here.</div>}
-                <button onClick={save} disabled={!!loadFailures?.companies || !["owner", "admin"].includes(userRole)} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:saved?"var(--sc-success)":"var(--sc-text)",cursor:"pointer",transition:"all 0.3s"}}>
+                <button onClick={save} disabled={!!loadFailures?.companies || !["owner", "admin"].includes(userRole)} style={{padding:"11px 32px",borderRadius:10,fontSize:14,fontWeight:600,background:saved?"linear-gradient(135deg,var(--sc-success-soft),var(--sc-success))":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:saved?"var(--sc-success)":"var(--sc-on-accent)",cursor:"pointer",transition:"all 0.3s"}}>
                   {saved ? "✓ Saved" : "Save Settings"}
                 </button>
 

@@ -110,7 +110,7 @@ export default function RecurringView() {
                         style={{width:"100%",boxSizing:"border-box",background:"var(--sc-surface-2)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"8px 10px",color:"var(--sc-text)",fontSize:12,outline:"none"}}/>
                     </div>
                   </div>
-                  <button onClick={addRecurring} disabled={!newRec.name||!newRec.amount} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:(!newRec.name||!newRec.amount)?"var(--sc-border)":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:"var(--sc-text)",cursor:(!newRec.name||!newRec.amount)?"not-allowed":"pointer"}}>Save</button>
+                  <button onClick={addRecurring} disabled={!newRec.name||!newRec.amount} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:(!newRec.name||!newRec.amount)?"var(--sc-border)":"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))",border:"none",color:(!newRec.name||!newRec.amount)?"var(--sc-text-2)":"var(--sc-on-accent)",cursor:(!newRec.name||!newRec.amount)?"not-allowed":"pointer"}}>Save</button>
                 </div>
                 {/* List */}
                 {loadFailures?.recurring_transactions ? <LoadFailedNotice what="recurring charges" table="recurring_transactions" /> : !companyDataLoaded ? <LoadingList what="your recurring charges" /> : recurring.length===0 ? (

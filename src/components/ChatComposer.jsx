@@ -90,7 +90,7 @@ export default function ChatComposer({ onSend, loading = false, showSuggestions 
         <button onClick={send} disabled={!canSend} aria-label="Send" style={{
           width: 40, height: 40, borderRadius: 10,
           background: canSend ? "linear-gradient(135deg,var(--sc-gold),var(--sc-gold))" : "var(--sc-border)",
-          border: "none", color: "var(--sc-text)", cursor: canSend ? "pointer" : "not-allowed", fontSize: 16, flexShrink: 0,
+          border: "none", color: canSend ? "var(--sc-on-accent)" : "var(--sc-text-2)", cursor: canSend ? "pointer" : "not-allowed", fontSize: 16, flexShrink: 0,
         }}>↑</button>
       </div>
     </>

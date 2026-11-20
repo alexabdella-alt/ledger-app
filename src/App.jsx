@@ -9929,12 +9929,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                 onClick={() => { if (historyDepth.current > 0) window.history.back(); else setView(!navSeat.isReviewerSeat && MONEY_GROUP.includes(view) ? "money" : "home"); }}>‹</button>
             )}
             <div className="sc-logo" onClick={()=>setView("home")} title="Go to Home" style={{ display:"flex", alignItems:"center", gap:12, cursor:"pointer", flexShrink:0 }}>
-              {/* Eclipse logomark — a gold disc partly eclipsed by a midnight disc → a "shadow" crescent */}
+              {/* Eclipse logomark — an off-white disc partly eclipsed by a midnight disc → a "shadow" crescent (C764: was gold) */}
               <svg width={26} height={26} viewBox="0 0 48 48" fill="none" aria-hidden style={{ flexShrink:0 }}>
                 <defs>
                   <linearGradient id="scTopMark" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="var(--sc-gold-bright)" />
-                    <stop offset="100%" stopColor="#bf9226" />
+                    <stop offset="100%" stopColor="var(--sc-gold-deep)" />
                   </linearGradient>
                 </defs>
                 <circle cx="24" cy="24" r="14" fill="url(#scTopMark)" />

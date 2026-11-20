@@ -72,7 +72,7 @@ function CompanySetup({ session, onComplete, first = true, onCancel = null, onSi
     sub: { fontSize:13, color:"var(--sc-text-2)", marginBottom:28 },
     label: { fontSize:11, color:"var(--sc-text-2)", marginBottom:4, letterSpacing:0.5 },
     input: { width:"100%", boxSizing:"border-box", background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"12px 14px", color:"var(--sc-text)", fontSize:15, outline:"none", marginBottom:20 },
-    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)", border:"none", color:"var(--sc-text)", cursor:name.trim()?"pointer":"not-allowed" },
+    btn: { width:"100%", padding:"13px", borderRadius:10, fontSize:14, fontWeight:600, background:name.trim()?"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))":"var(--sc-border)", border:"none", color:name.trim()?"var(--sc-on-accent)":"var(--sc-text-2)", cursor:name.trim()?"pointer":"not-allowed" },
     error: { background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"var(--sc-error)", marginBottom:12 },
   };
 
