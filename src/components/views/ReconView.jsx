@@ -777,7 +777,7 @@ export default function ReconView() {
             </div>
           </div>
         )}
-        <button onClick={startFresh} className="sc-cta" style={{ padding:"13px 22px", borderRadius:11, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:24, boxShadow:"0 6px 18px rgba(109,94,246,.3)" }}>+ Start a new match</button>
+        <button onClick={startFresh} className="sc-cta" style={{ padding:"13px 22px", borderRadius:11, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", fontSize:14, fontWeight:600, cursor:"pointer", marginBottom:24, boxShadow:"0 6px 18px rgba(0,0,0,.35)" }}>+ Start a new match</button>
         <div style={{ ...card, overflow:"hidden" }}>
           <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--sc-surface-2)", fontSize:13, fontWeight:600 }}>History</div>
           {completed.length===0 ? <div style={{ padding:"28px", textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>No completed matches yet.</div> :

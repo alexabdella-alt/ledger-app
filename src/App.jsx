@@ -9741,7 +9741,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         body, input, button, select, textarea { font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
         /* Consistent form focus + interactive defaults across the app */
         button:not(:disabled){ cursor:pointer; }
-        input:focus, select:focus, textarea:focus { border-color:var(--sc-gold) !important; box-shadow:0 0 0 3px rgba(79,70,229,0.10); outline:none; }
+        input:focus, select:focus, textarea:focus { border-color:var(--sc-gold) !important; box-shadow:0 0 0 3px rgba(236,235,231,0.06); outline:none; }
         /* Sticky table headers — column labels stay visible while the main area scrolls.
            background-color:inherit pulls each header row's own color onto the cells (the
            tr carries the bg inline; sticky th need their own paint to avoid bleed-through).
@@ -10256,7 +10256,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       <button className="sc-chat-fab" aria-label={chatOpen ? "Close the assistant" : "Open the assistant"} onClick={()=>{ setChatOpen(o=>!o); setHasUnread(false); }} style={{
         position:"fixed", bottom:28, right:28, width:58, height:58, borderRadius:"50%",
         background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", cursor:"pointer",
-        boxShadow:"0 8px 32px rgba(109,40,217,0.5)", display:"flex", alignItems:"center", justifyContent:"center",
+        boxShadow:"0 8px 32px rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center",
         fontSize:24, zIndex:1000, animation:"popbubble 0.3s cubic-bezier(0.34,1.56,0.64,1)",
         transition:"transform 0.2s"
       }} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>

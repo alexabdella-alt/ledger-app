@@ -14,7 +14,7 @@ describe("C764 — the tokens", () => {
     expect(root).toMatch(/--sc-on-accent:\s+#10151b;/);
   });
   it("★★ no gold left anywhere in the styles, the app or the icons", () => {
-    const gold = /e8b53d|f6cb5b|bf9226|e8c55b|232,\s*181,\s*61/i;
+    const gold = /e8b53d|f6cb5b|bf9226|e8c55b|232,\s*181,\s*61|rgba\(109,\s*94,\s*246|rgba\(109,\s*40,\s*217|rgba\(79,\s*70,\s*229/i;   // and the purple glows (C764)
     const files = [];
     (function walk(d) { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (/\.(js|jsx|css|svg)$/.test(f.name)) files.push(p); } })("src");
     files.push("public/favicon.svg");

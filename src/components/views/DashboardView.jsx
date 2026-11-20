@@ -533,10 +533,10 @@ export default function DashboardView() {
               {/* ── UNIVERSAL UPLOAD ZONE ── */}
               <style>{`
                 .sc-dropzone{ transition: border-color .18s ease, background .18s ease, box-shadow .18s ease; }
-                .sc-dropzone:hover{ border-color:var(--sc-gold) !important; background:var(--sc-bg) !important; box-shadow:0 0 0 4px rgba(79,70,229,0.07), 0 10px 30px rgba(79,70,229,0.10) !important; }
+                .sc-dropzone:hover{ border-color:var(--sc-gold) !important; background:var(--sc-bg) !important; box-shadow:0 0 0 4px rgba(236,235,231,0.042), 0 10px 30px rgba(236,235,231,0.06) !important; }
                 .sc-dropzone:hover .sc-dropzone-icon{ opacity:1 !important; transform:translateY(-3px); }
                 .sc-dropzone .sc-dropzone-icon{ transition: opacity .18s ease, transform .18s ease; }
-                @keyframes scDropPulse{0%,100%{box-shadow:0 0 0 4px rgba(79,70,229,0.10),0 10px 32px rgba(79,70,229,0.16)}50%{box-shadow:0 0 0 9px rgba(79,70,229,0.05),0 10px 36px rgba(79,70,229,0.24)}}
+                @keyframes scDropPulse{0%,100%{box-shadow:0 0 0 4px rgba(236,235,231,0.06),0 10px 32px rgba(236,235,231,0.096)}50%{box-shadow:0 0 0 9px rgba(236,235,231,0.03),0 10px 36px rgba(236,235,231,0.144)}}
                 .sc-dropzone.dragging{ animation:scDropPulse 1.3s ease-in-out infinite; }
                 .sc-phone-only{ display:none !important; }
                 @media (pointer: coarse){ .sc-phone-only{ display:flex !important; } .sc-desk-only{ display:none !important; } .sc-dropzone{ padding:28px 18px !important; } }

@@ -106,7 +106,7 @@ function AuthScreen({ onAuth, invite }) {
           <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
             {features.map(([t, d], i) => (
               <div key={t} className={`sc-rise-${i+2}`} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
-                <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, marginTop:2, background:"linear-gradient(135deg, rgba(139,123,255,.18), rgba(109,94,246,.08))", border:"1px solid var(--sc-border-2)", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--sc-gold)", fontSize:13 }}>✦</div>
+                <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, marginTop:2, background:"linear-gradient(135deg, rgba(139,123,255,.18), rgba(236,235,231,.04))", border:"1px solid var(--sc-border-2)", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--sc-gold)", fontSize:13 }}>✦</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:600, marginBottom:3 }}>{t}</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.55, maxWidth:420 }}>{d}</div>
@@ -177,7 +177,7 @@ function AuthScreen({ onAuth, invite }) {
             </>
           )}
 
-          <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:loading?"wait":"pointer", marginTop:10, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(109,94,246,.32)" }} onClick={handle} disabled={loading}>
+          <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:loading?"wait":"pointer", marginTop:10, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(0,0,0,.35)" }} onClick={handle} disabled={loading}>
             {loading ? "One moment…" : mode === "login" ? "Sign in →" : mode === "signup" ? "Create account →" : "Send reset link →"}
           </button>
 
@@ -243,7 +243,7 @@ function UpdatePasswordScreen({ onDone }) {
         <div style={label}>CONFIRM PASSWORD</div>
         <input style={input} type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()}/>
 
-        <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:loading?"wait":"pointer", marginTop:8, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(109,94,246,.32)" }} onClick={submit} disabled={loading}>
+        <button className="sc-cta" style={{ width:"100%", padding:"13px", borderRadius:11, fontSize:14, fontWeight:600, background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", cursor:loading?"wait":"pointer", marginTop:8, letterSpacing:0.3, boxShadow:"0 8px 24px rgba(0,0,0,.35)" }} onClick={submit} disabled={loading}>
           {loading ? "Saving…" : "Update password →"}
         </button>
       </div>
