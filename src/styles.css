@@ -398,6 +398,14 @@ button:not(:disabled):active { transform: translateY(1px) scale(0.99); }
   .sc-reportdates input { flex: 1 1 0; min-width: 0; }
   .sc-page [data-plain-summary] { font-size: 13.5px !important; padding: 12px 14px !important; }
 
+  /* ★ C766 — no page scrolls sideways: a too-wide row inside the page let the whole screen slide
+     left and cut off its left edge (Starting balances). Rows that need it wrap instead. */
+  #main-content { overflow-x: hidden !important; }
+  .sc-page input, .sc-page select, .sc-page textarea { box-sizing: border-box; min-width: 0; }
+  .sc-page input[type="date"] { -webkit-appearance: none; appearance: none; max-width: 100%; }
+  .sc-cutoff-row { flex-wrap: wrap !important; row-gap: 10px !important; }
+  .sc-cutoff-row > span, .sc-cutoff-row > div:not(:first-child) { flex: 1 1 100% !important; min-width: 0; }
+
   /* the assistant: the tab bar steps aside while it's open (it covered the text box); a tidy header */
   body:has(.sc-chat-panel) .sc-tabbar { display: none !important; }
   .sc-chat-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }

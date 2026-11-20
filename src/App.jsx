@@ -1456,7 +1456,12 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
         q(supabase.from("companies").select("*").eq("id", cid).single()),
         q(supabase.from("opening_balances").select("*, accounts(code, name)").eq("company_id", cid)),
         q(supabase.from("bank_accounts").select("*, accounts(code)").eq("company_id", cid).eq("active", true).order("created_at").order("id")),   // C689 — a stable order, so the default "Paid from" doesn't move
-        q(supabase.from("recurring_transactions").select("*, debit_account:debit_account_id(code,name), credit_account:credit_account_id(code,name), contacts(name)").eq("company_id", cid).order("next_date")),
+        // ★ C766 — BY THE FOREIGN KEY'S NAME, NOT THE COLUMN'S. Migration 092 (2026-09-28) replaced each
+        // single-column key with a (column, company_id) pair, and PostgREST can no longer resolve
+        // `debit_account_id(code,name)` — it answered PGRST200 and this list failed to load for every
+        // company from that day, showing "We couldn't load your recurring charges". The hint names the
+        // constraint 092 created; tests/recurringLoadC766 pins the names against the migration.
+        q(supabase.from("recurring_transactions").select("*, debit_account:accounts!recurring_transactions_debit_account_id_company_fkey(code,name), credit_account:accounts!recurring_transactions_credit_account_id_company_fkey(code,name), contacts(name)").eq("company_id", cid).order("next_date")),
         readAllRows(() => supabase.from("ar_invoices").select("*, ar_invoice_lines(*), contacts(name, email)").eq("company_id", cid).order("created_at", { ascending: false }).order("id")),
         // C568 — the screen shows the newest 1,000; the exact count says how many there are in all.
         q(supabase.from("audit_log").select("*", { count: "exact" }).eq("company_id", cid).order("created_at", { ascending: false }).limit(AUDIT_SCREEN_ROWS)),

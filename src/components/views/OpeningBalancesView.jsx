@@ -97,7 +97,7 @@ export default function OpeningBalancesView() {
                 )}
                 {(() => { const manual = (<>
                 {/* Cutoff (Day One) — editable until the opening entry is posted, then locked */}
-                <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
+                <div className="sc-cutoff-row" style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:12,padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:16}}>
                   <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Start date:</div>
                   <input type="date" value={cutoffDate||""} disabled={openingPosted} onChange={e=>saveCutoffDate(e.target.value)}
                     style={{background: openingPosted?"var(--sc-surface-2)":"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
