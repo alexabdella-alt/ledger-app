@@ -5,16 +5,21 @@ import { vendorLogo } from "../lib/vendorLogo";
 // C395 — the vendor's logo where we KNOW their domain (the curated directory, or a
 // website a person typed on the contact), initials otherwise. A logo that fails to load
 // falls back to the initials so a broken image never sits beside a supplier's name.
+// ★ C765 — logos also from a saved email's domain and a logo-only list of national brands
+// (lib/vendorLogo.js); a crisp 128px image on a white tile (most logos are drawn for white); and
+// Google's "no icon" answer — a 16px globe, whatever size was asked for — is treated as no logo,
+// so a vendor never shows a generic globe instead of their initials.
 export default function VendorAvatar({ vendor, size = 44, radius = 12, fontSize = 15, onClick, title }) {
   const name = vendor?.name || "";
-  const logo = vendorLogo({ name, website: vendor?.website });
+  const logo = vendorLogo({ name, website: vendor?.website, email: vendor?.email }, { size: 128 });
   const [failed, setFailed] = React.useState(false);
   const base = { width: size, height: size, borderRadius: radius, flexShrink: 0, cursor: onClick ? "pointer" : "default", overflow: "hidden" };
   if (logo && !failed) {
     return (
-      <div onClick={onClick} title={title || `${name} · logo from ${logo.domain}`} data-vendor-logo={logo.domain}
-        style={{ ...base, background: "var(--sc-surface-2)", border: "1px solid var(--sc-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <img src={logo.url} alt="" width={Math.round(size * 0.6)} height={Math.round(size * 0.6)} loading="lazy" onError={() => setFailed(true)} style={{ display: "block" }} />
+      <div onClick={onClick} title={title || logo.domain} data-vendor-logo={logo.domain}
+        style={{ ...base, background: "#ffffff", border: "1px solid var(--sc-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <img src={logo.url} alt="" width={Math.round(size * 0.68)} height={Math.round(size * 0.68)} loading="lazy" referrerPolicy="no-referrer"
+          onError={() => setFailed(true)} onLoad={(e) => { if ((e.currentTarget.naturalWidth || 0) <= 16) setFailed(true); }} style={{ display: "block", objectFit: "contain" }} />
       </div>
     );
   }

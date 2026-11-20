@@ -19,6 +19,7 @@ import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
 import Icon from "./Icon";
+import VendorAvatar from "./VendorAvatar";
 import PayFromSelect, { usePayFromOptions } from "./PayFromSelect";
 import ReceivedIntoSelect, { useReceivedIntoOptions } from "./ReceivedIntoSelect";
 import { payFromByKey } from "../lib/payFrom";
@@ -118,7 +119,7 @@ function SourceDocPreview({ doc, onExpand }) {
 
 export default function TransactionDetailPanel({ invoiceId, onClose, returnContext, onNavigate }) {
   const {
-    invoices, signoffs, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
+    invoices, contacts, signoffs, CHART_OF_ACCOUNTS, BOOKABLE_ACCOUNTS, markPaid, persistRecode, logAudit, getAccountByRole,
     navSeat, setInvoices, setSelectedInvoice, setView, setReturnTo, removeEntry, removalPlanFor, setDeleteConfirm, docLibrary, storeDocument, fileToBase64, showNotification, isViewer, attachDepreciationToExistingAsset, isOwner, isAdmin,
     disposeAsset,
   } = useERP();
@@ -252,7 +253,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
         <div onClick={e => e.stopPropagation()} style={{ width: 880, maxWidth: "94vw", height: "100%", background: "var(--sc-surface)", borderLeft: "1px solid var(--sc-border)", boxShadow: "-20px 0 60px rgba(16,24,40,0.18)", display: "flex", flexDirection: "column", animation: "txnPanelIn .25s cubic-bezier(.22,1,.36,1)" }}>
           <div style={{ padding: "20px 24px", borderBottom: "1px solid var(--sc-surface-2)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-              <span style={{ width: 42, height: 42, borderRadius: 11, background: vendorColor(party), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "var(--sc-on-accent)", flexShrink: 0 }}>{initials(party)}</span>
+              <VendorAvatar vendor={(contacts || []).find((c) => c && String(c.name || "").trim().toLowerCase() === String(party || "").trim().toLowerCase()) || { name: party }} size={42} radius={11} fontSize={15} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{party || "—"}</div>
                 <div style={{ fontSize: 12, color: "var(--sc-text-2)" }}>{fmtDate(sel.date)}</div>

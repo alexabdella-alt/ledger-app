@@ -20,6 +20,7 @@ import { ownerAccountName } from "../../lib/categoryLabel";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { linkedDocIds, hasSourceDoc, RECEIPT_MARK, RECEIPT_MARK_LABEL } from "../../lib/sourceDoc";
 import Icon from "../Icon";
+import VendorAvatar from "../VendorAvatar";
 
 // C637 — `embedded`: drawn inside the owner's Money page, which carries its own title.
 export default function BooksView({ embedded = false } = {}) {
@@ -29,7 +30,7 @@ export default function BooksView({ embedded = false } = {}) {
     booksFilter, setBooksFilter, softDeleteInvoices, signoffs, setDeleteConfirm, isViewer,
     navSeat,
     contracts, setSelectedContract, setContractView, postAllContractEntries, CONTRACT_TYPES, showNotification,
-    reconciliations, docLibrary, storeDocument, fileToBase64,
+    reconciliations, docLibrary, storeDocument, fileToBase64, contacts,
     vendorFilter, setVendorFilter, filteredInvoices, companyDataLoaded,
   } = useERP();
   // ★ C347 — THE VENDOR DOOR. DetailView's "View all transactions for X" sets `vendorFilter`
@@ -40,7 +41,9 @@ export default function BooksView({ embedded = false } = {}) {
   const scopedInvoices = vendorScoped && Array.isArray(filteredInvoices) ? filteredInvoices : invoices;
   const apCode = getAccountByRole?.("accounts_payable")?.code;
   const arCode = getAccountByRole?.("accounts_receivable")?.code;
-  // C750 — which rows have their receipt saved (📎), by the rule the detail panel uses.
+  // C765 — the saved contact for a row's party (website/email → its logo), by name.
+  const contactByName = React.useMemo(() => new Map((contacts || []).filter((c) => c && c.name).map((c) => [String(c.name).trim().toLowerCase(), c])), [contacts]);
+  // C750 — which rows have their receipt saved (paperclip), by the rule the detail panel uses.
   const receiptIds = React.useMemo(() => linkedDocIds(docLibrary), [docLibrary]);
   const settled = React.useMemo(() => settledBases(invoices), [invoices]);   // C528 — bills a live payment links get no Mark as Paid
   // ★★ C315 — THIS SCREEN BECAME CLIENT-FACING ON 2026-09-10 (C313) AND WAS WRITTEN FOR
@@ -373,7 +376,7 @@ export default function BooksView({ embedded = false } = {}) {
                         style={{ cursor:"pointer" }} />
                     </td>
                     <td className="sc-c-date" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
-                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span>{hasSourceDoc(inv, receiptIds) && <span data-receipt-mark title={RECEIPT_MARK_LABEL} aria-label={RECEIPT_MARK_LABEL} role="img" style={{ flexShrink:0, color:"var(--sc-text-2)", display:"inline-flex" }}><Icon name={RECEIPT_MARK} size={14} /></span>}</div></td>
+                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><VendorAvatar vendor={contactByName.get(String(party||"").trim().toLowerCase()) || { name: party }} size={28} radius={8} fontSize={10} /><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span>{hasSourceDoc(inv, receiptIds) && <span data-receipt-mark title={RECEIPT_MARK_LABEL} aria-label={RECEIPT_MARK_LABEL} role="img" style={{ flexShrink:0, color:"var(--sc-text-2)", display:"inline-flex" }}><Icon name={RECEIPT_MARK} size={14} /></span>}</div></td>
                     <td className="sc-c-desc" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(cockpit ? inv.description : descAfterParty(inv.description, party))||"—"}</td>
                     <td className="sc-c-cat" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td className="sc-c-amt" style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
