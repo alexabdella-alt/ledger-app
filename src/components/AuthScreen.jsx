@@ -2,7 +2,8 @@ import React from "react";
 import { authErrorCopy } from "../lib/authErrorCopy";
 import { supabase } from "../lib/supabase";
 import LegalView from "./LegalView";
-import { AUTH_TAGLINE, AUTH_FEATURES, AUTH_FOOTER, AUTH_HEADINGS, inviteRoleLabel, authFormProblem, confirmEmailCopy, PASSWORD_MIN } from "../lib/firstRun";
+import Icon from "./Icon";
+import { AUTH_TAGLINE, AUTH_FEATURES, AUTH_FOOTER, AUTH_TRUST, AUTH_HEADINGS, inviteRoleLabel, authFormProblem, confirmEmailCopy, PASSWORD_MIN } from "../lib/firstRun";
 
 // Shadow eclipse mark — a luminous disc partly occluded by shadow.
 function EclipseMark({ size = 40 }) {
@@ -96,17 +97,24 @@ function AuthScreen({ onAuth, invite }) {
         </div>
 
         <div style={{ maxWidth:540 }}>
+          {/* ★ C767 — the trust line, first thing above the promise */}
+          <div data-auth-trust className="sc-rise-1" style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"6px 12px", borderRadius:20, border:"1px solid var(--sc-border-2)", background:"var(--sc-gold-soft)", color:"var(--sc-text)", fontSize:13, fontWeight:600, marginBottom:20 }}>
+            <Icon name="shield" size={16} />{AUTH_TRUST.badge}
+          </div>
           <h1 className="sc-rise-1" style={{ fontSize:"clamp(34px, 4.4vw, 56px)", lineHeight:1.05, fontWeight:700, margin:"0 0 20px", letterSpacing:-1.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>
             Your finance team,<br/>
             <span className="sc-wordmark">in the shadows.</span>
           </h1>
-          <p className="sc-rise-2" style={{ fontSize:16, lineHeight:1.65, color:"var(--sc-text-2)", margin:"0 0 40px", maxWidth:460 }}>
+          <p className="sc-rise-2" style={{ fontSize:16, lineHeight:1.65, color:"var(--sc-text-2)", margin:"0 0 12px", maxWidth:460 }}>
             {AUTH_TAGLINE}
+          </p>
+          <p data-auth-trust-line className="sc-rise-2" style={{ fontSize:14, lineHeight:1.6, color:"var(--sc-text-mut)", margin:"0 0 40px", maxWidth:460 }}>
+            {AUTH_TRUST.line}
           </p>
           <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
             {features.map(([t, d], i) => (
               <div key={t} className={`sc-rise-${i+2}`} style={{ display:"flex", gap:14, alignItems:"flex-start" }}>
-                <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, marginTop:2, background:"linear-gradient(135deg, rgba(139,123,255,.18), rgba(236,235,231,.04))", border:"1px solid var(--sc-border-2)", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--sc-gold)", fontSize:13 }}>✦</div>
+                <div style={{ width:30, height:30, borderRadius:9, flexShrink:0, marginTop:2, background:"var(--sc-gold-soft)", border:"1px solid var(--sc-border-2)", display:"flex", alignItems:"center", justifyContent:"center", color:"var(--sc-gold)", fontSize:13 }}>✦</div>
                 <div>
                   <div style={{ fontSize:14, fontWeight:600, marginBottom:3 }}>{t}</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", lineHeight:1.55, maxWidth:420 }}>{d}</div>
@@ -129,6 +137,8 @@ function AuthScreen({ onAuth, invite }) {
           <div className="sc-auth-mini" style={{ alignItems:"center", gap:10, marginBottom:22 }}>
             <EclipseMark size={30} />
             <div className="sc-wordmark" style={{ fontSize:15, fontWeight:700, letterSpacing:2.5, fontFamily:"'Space Grotesk','DM Sans',sans-serif" }}>SHADOW CFO</div>
+            {/* C767 — on a phone the form comes first, so the trust line rides with the name */}
+            <span data-auth-trust-mini style={{ marginLeft:"auto", display:"inline-flex", alignItems:"center", gap:5, fontSize:12, fontWeight:600, color:"var(--sc-text-2)" }}><Icon name="shield" size={14} />{AUTH_TRUST.badge}</span>
           </div>
           {invite && (
             inviteValid ? (

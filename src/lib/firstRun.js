@@ -19,6 +19,11 @@ export const AUTH_FEATURES = [
 // ★ ONLY WHAT IS VERIFIED (§11's hard rule for the client-facing story): tenant isolation was
 // audited table by table; the audit trail exists. "ASC 842 compliant" was a compliance claim
 // nobody has certified, on the first screen a stranger reads — gone.
+// ★ C767 — THE TRUST LINE (operator, 2026-11-20: "built by a CPA … good to highlight as a selling point").
+export const AUTH_TRUST = {
+  badge: "Built by a CPA",
+  line: "Designed by a CPA, so your books are kept the way an accountant would keep them.",
+};
 export const AUTH_FOOTER = "Your books are private to your company · Every change is recorded";
 
 export const AUTH_HEADINGS = {
