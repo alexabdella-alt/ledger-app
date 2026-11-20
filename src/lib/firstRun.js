@@ -19,10 +19,13 @@ export const AUTH_FEATURES = [
 // ★ ONLY WHAT IS VERIFIED (§11's hard rule for the client-facing story): tenant isolation was
 // audited table by table; the audit trail exists. "ASC 842 compliant" was a compliance claim
 // nobody has certified, on the first screen a stranger reads — gone.
-// ★ C767 — THE TRUST LINE (operator, 2026-11-20: "built by a CPA … good to highlight as a selling point").
+// ★ C767 — THE TRUST LINE (operator, 2026-11-20: a selling point worth showing).
+// ★ C768 — NOT "CPA": the operator's licence is inactive, and state boards generally restrict the CPA
+// title in advertising to active licensees. The selling point stands without the title. Do not put
+// "CPA" back here unless the licence is active (or the board's own wording for inactive is used).
 export const AUTH_TRUST = {
-  badge: "Built by a CPA",
-  line: "Designed by a CPA, so your books are kept the way an accountant would keep them.",
+  badge: "Built by an accountant",
+  line: "Designed by an accountant, so your books are kept the way a professional would keep them.",
 };
 export const AUTH_FOOTER = "Your books are private to your company · Every change is recorded";
 

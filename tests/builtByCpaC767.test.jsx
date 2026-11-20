@@ -6,8 +6,9 @@ import { AUTH_TRUST } from "../src/lib/firstRun.js";
 describe("C767 — the trust line", () => {
   const a = readFileSync("src/components/AuthScreen.jsx", "utf8");
   it("★★ a badge above the headline, a sentence under the tagline, and the badge beside the name on a phone", () => {
-    expect(AUTH_TRUST.badge).toBe("Built by a CPA");
-    expect(AUTH_TRUST.line).toMatch(/CPA/);
+    expect(AUTH_TRUST.badge).toBe("Built by an accountant");
+    // ★ C768 — never the CPA title while the operator's licence is inactive
+    expect(`${AUTH_TRUST.badge} ${AUTH_TRUST.line}`).not.toMatch(/\bCPA\b/);
     expect(a).toContain("data-auth-trust ");
     expect(a.indexOf("data-auth-trust ")).toBeLessThan(a.indexOf('<h1 className="sc-rise-1"'));
     expect(a).toContain("{AUTH_TRUST.line}");
