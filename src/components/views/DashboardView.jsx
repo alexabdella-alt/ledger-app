@@ -8,6 +8,7 @@ import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, ownerNeedHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
 import { useCompletenessState, statementNeedsFrom } from "./MonthStatus";
 import ReceiptsToAdd from "../ReceiptsToAdd";
+import AddToHomeScreen from "../AddToHomeScreen";
 import Icon from "../Icon";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { monthLabel as ownerMonthLabel } from "../../lib/ownerTrust";
@@ -763,6 +764,9 @@ export default function DashboardView() {
 
               {/* ★ C755 — receipts still to add: purchases told to the assistant, and recent spending of $75+ */}
               <ReceiptsToAdd />
+
+              {/* ★ C770 — on a phone, until it's installed or dismissed: how to put Shadow on the home screen */}
+              <AddToHomeScreen />
 
               {/* ── CLARIFICATION QUEUE (conversational flow) ── */}
               <ClarificationStepper />
