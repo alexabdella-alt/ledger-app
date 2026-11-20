@@ -45,7 +45,8 @@ describe("the drop box on a phone", () => {
   const h = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "client", isReviewerSeat: false, sections: [], viewIds: CLIENT_VIEW_IDS }, companyDataLoaded: true });
   it("★ a camera input and two buttons — Take a photo, Choose a screenshot or file — shown on touch screens only", () => {
     expect(h).toMatch(/<input id="universal-camera" type="file" accept="image\/\*" capture="environment"/);
-    expect(h).toContain("📷 Take a photo");
+    expect(h).toContain("Take a photo");   // C762 — the camera is an icon, not 📷
+    expect(h).toContain('data-icon="camera"');
     expect(h).toContain("Choose a screenshot or file");
     expect(h).toMatch(/data-phone-upload="?[^>]*class="sc-phone-only"|class="sc-phone-only"[^>]*data-phone-upload/);
     expect(h).toContain("@media (pointer: coarse)");

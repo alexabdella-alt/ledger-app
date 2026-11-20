@@ -2,6 +2,7 @@ import React from "react";
 import { useERP } from "./ERPContext";
 import { fmtMoney, fmtDate, todayLocal } from "../lib/format";
 import { receiptsToAdd, RECEIPTS_COPY } from "../lib/toldPurchase";
+import Icon from "./Icon";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // C755 — RECEIPTS TO ADD, ON HOME. Purchases the owner told the assistant about, and recent
@@ -34,7 +35,7 @@ export default function ReceiptsToAdd() {
 
   return (
     <section data-receipts-to-add aria-label="Receipts to add" style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "16px 18px", marginBottom: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)" }}>🧾 {RECEIPTS_COPY.title(items.length)}</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)", display: "flex", alignItems: "center", gap: 8 }}><Icon name="receipt" size={18} style={{ color: "var(--sc-gold)" }} />{RECEIPTS_COPY.title(items.length)}</div>
       <div style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 4, lineHeight: 1.5 }}>{RECEIPTS_COPY.sub}</div>
       {/* No `capture`: on a phone this offers the camera AND the photo library (screenshots, emailed PDFs). */}
       <input ref={fileRef} type="file" accept="image/*,.pdf,.heic,.heif" style={{ display: "none" }} onChange={onFile} />
@@ -50,7 +51,7 @@ export default function ReceiptsToAdd() {
                 style={{ background: "none", border: "none", padding: 0, fontSize: 12.5, color: "var(--sc-text-2)", cursor: "pointer", textDecoration: "underline" }}>I don't have one</button>
               <button data-receipt-add onClick={() => pick(it)} disabled={busy === it.entryId}
                 style={{ padding: "8px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, border: "none", background: busy === it.entryId ? "var(--sc-border)" : "var(--sc-gold)", color: busy === it.entryId ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: busy === it.entryId ? "default" : "pointer", whiteSpace: "nowrap" }}>
-                {busy === it.entryId ? "Saving…" : <>📷 Add receipt</>}
+                {busy === it.entryId ? "Saving…" : <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="camera" size={15} />Add receipt</span>}
               </button>
             </div>
           </div>

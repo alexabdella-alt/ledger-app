@@ -1,4 +1,5 @@
 import React from "react";
+import Icon, { docIconName } from "../Icon";
 import { docTypeLabel } from "../../lib/plainLabels";
 import NextStep from "../NextStep";
 import { useERP } from "../ERPContext";
@@ -22,7 +23,7 @@ function StoredImage({ supabase, path, base64, mediaType, style, alt }) {
     }).catch(() => {});
     return () => { active = false; };
   }, [path, base64, mediaType]);
-  if (!url) return <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--sc-text-mut)", fontSize: 22 }}>🖼</div>;
+  if (!url) return <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--sc-text-mut)", fontSize: 22 }}><Icon name="image" size={24} /></div>;
   return <img src={url} style={style} alt={alt || ""} loading="lazy" />;
 }
 
@@ -53,7 +54,6 @@ export default function DocsView() {
 
   const isImage = m => (m || "").startsWith("image");
   const isPdf = m => m === "application/pdf";
-  const iconFor = t => t === "invoice" ? "🧾" : t === "contract" ? "📄" : t === "bank_statement" ? "🏦" : t === "payroll" ? "💼" : "📋";
   const hasFile = d => !!(d && (d.base64 || d.storage_path));
 
   return (
@@ -95,7 +95,7 @@ export default function DocsView() {
            old copy told a person their documents did not exist. Two different facts, two
            different sentences — and the second one offers the way out. */
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+          <div style={{ marginBottom: 12, color: "var(--sc-text-2)" }}><Icon name="search" size={30} /></div>
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>Nothing matches</div>
           <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 14 }}>{library.length} document{library.length !== 1 ? "s are" : " is"} stored, but none match this search.</div>
           <button onClick={() => { setQuery(""); setFrom(""); setTo(""); setFilterType("all"); }}
@@ -103,7 +103,7 @@ export default function DocsView() {
         </div>
       ) : loadFailures?.documents ? <LoadFailedNotice what="documents" table="documents" /> : !companyDataLoaded ? <LoadingList what="your documents" /> : filtered.length === 0 ? (
         <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
+          <div style={{ marginBottom: 12, color: "var(--sc-text-2)" }}><Icon name="folder" size={30} /></div>
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 8 }}>No documents yet</div>
           <div style={{ fontSize: 13, color: "var(--sc-text-2)" }}>Every file you upload — bills, receipts, statements, contracts, payroll reports — is kept here, searchable.</div>
           <div style={{ marginTop: 16 }}><NextStep label="Upload on Home →" onClick={() => setView("home")} /></div>
@@ -121,7 +121,7 @@ export default function DocsView() {
                 <div className="sc-docthumb" style={{ height: 120, background: "var(--sc-surface-2)", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid var(--sc-border)", overflow: "hidden" }}>
                   {isImage(doc.mediaType) && hasFile(doc)
                     ? <StoredImage supabase={supabase} path={doc.storage_path} base64={doc.base64} mediaType={doc.mediaType} alt={doc.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    : <div style={{ fontSize: 40 }}>{isPdf(doc.mediaType) ? "📄" : iconFor(doc.type)}</div>}
+                    : <div style={{ color: "var(--sc-text-2)" }}><Icon name={docIconName(doc.type, doc.mediaType)} size={36} strokeWidth={1.5} /></div>}
                 </div>
                 <div className="sc-docbody" style={{ padding: 14 }}>
                   <div className="sc-docname" title={doc.name} style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, wordBreak: "break-word" }}>{friendlyDocName(doc)}</div>

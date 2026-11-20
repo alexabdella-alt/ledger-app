@@ -54,7 +54,7 @@ describe("C587 — with more than one account, Home asks which one a statement i
     expect(tone).toBe(QUEUE_TONE.REVIEW);
     expect(queueItemChip(tone, waiting)).toBe("Needs your answer");
     expect(queueSummaryCopy(queueCensus([waiting]))).toBe("1 document handled · 1 has a question for you");
-    expect(queueItemChip(QUEUE_TONE.REVIEW, { result: {} })).toBe("⚠ Needs Review");   // the other kind of question is unchanged
+    expect(queueItemChip(QUEUE_TONE.REVIEW, { result: {} })).toBe("Needs review");   // C762 — no emoji in the chip   // the other kind of question is unchanged
   });
 
   const app = readFileSync("src/App.jsx", "utf8");

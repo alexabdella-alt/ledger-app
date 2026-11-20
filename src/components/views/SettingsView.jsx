@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { toCSV, journalLinesForExport } from "../../lib/insights";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { useERP } from "../ERPContext";
@@ -141,7 +142,7 @@ export default function SettingsView() {
                       <div style={{fontSize:11,color:"var(--sc-text-2)",marginBottom:6}}>LOGO</div>
                       <div onClick={()=>{const i=document.createElement("input");i.type="file";i.accept="image/*";i.onchange=e=>handleLogo(e.target.files[0]);i.click();}}
                         style={{width:80,height:80,borderRadius:12,border:"2px dashed var(--sc-border-2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",background:"var(--sc-surface-2)"}}>
-                        {logoPreview ? <img src={logoPreview} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/> : <span style={{fontSize:24}}>🏢</span>}
+                        {logoPreview ? <img src={logoPreview} style={{width:"100%",height:"100%",objectFit:"contain"}} alt="logo"/> : <span style={{fontSize:24}}><Icon name="building" size={24} /></span>}
                       </div>
                     </div>
                     <div style={{flex:1,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>

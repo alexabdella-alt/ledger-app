@@ -38,7 +38,7 @@ function answeredPhrase(r = {}) {
   if (a.some((x) => (x.kind === "booked" || x.kind === "attached") && x.landed)) return `✓ Added to your books${who}`;
   if (a.some((x) => x.kind === "deferred")) return `Sent to our team${who}`;
   if (a.length && a.every((x) => x.kind === "skipped")) return `Set aside — not added${who}`;
-  if (a.length) return `⚠ Not added yet${who} — open it again from Home`;
+  if (a.length) return `Not added yet${who} — open it again from Home`;
   return `Answered${who}`;
 }
 function refusedPhrase(r = {}) {
@@ -53,7 +53,7 @@ export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
   const attach = attachPhrase(r);
   const refused = refusedPhrase(r);
   // C623 — nothing landed and nothing to ask: say what did not happen, never "✓".
-  if (booked === 0 && asking === 0 && refused && !attach) return `⚠ ${refused} — see the message for why`;
+  if (booked === 0 && asking === 0 && refused && !attach) return `${refused} — see the message for why`;
 
   // Nothing booked and nothing asked, but something WAS filed → say that, on its own.
   if (attach && booked === 0 && asking === 0) return `✓ ${attach}` + (refused ? ` · ${refused}` : "");   // C623
@@ -63,7 +63,7 @@ export function invoiceOutcomeCopy(r = {}, { pendingReview = false } = {}) {
     if (!pendingReview) {
       return answeredPhrase(r) + (attach ? ` · ${attach}` : "") + (refused ? ` · ${refused}` : "");
     }
-    return `⚠ Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`
+    return `Needs your input · ${r.reviewVendor || "this entry"}${r.reviewAmount != null ? ` · ${money(r.reviewAmount)}` : ""}`
          + (asking > 1 ? ` (+${asking - 1} more)` : "")
          + (attach ? ` · ${attach}` : "");
   }

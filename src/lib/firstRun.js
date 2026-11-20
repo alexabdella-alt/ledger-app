@@ -84,7 +84,7 @@ export const DROPZONE_COPY = {
   reading: "READING YOUR FILES…",
   // C736 — on a phone: the camera, and the photo library (where screenshots live)
   phoneTitle: "Add a receipt or bill",
-  camera: "📷 Take a photo",
+  camera: "Take a photo",
   library: "Choose a screenshot or file",
   phoneSub: "Snap a receipt, or pick a screenshot of a bill or payment — we'll read it and add it to your books",
 };

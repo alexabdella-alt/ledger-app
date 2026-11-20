@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { heldRegistersToReload } from "../../lib/waitingOnYou";
 import { payrollRequestBody, isPdfFile, gateSaysDuplicate, PAYROLL_GATE } from "../../lib/payroll";
@@ -39,9 +40,9 @@ export default function PayrollView() {
                   onDrop={e=>{e.preventDefault();setPayrollDragOver(false);const f=e.dataTransfer.files[0];if(f)handlePayrollFile(f);}}
                   style={{border:`2px dashed ${payrollDragOver?"var(--sc-gold)":"var(--sc-border-2)"}`,borderRadius:14,padding:32,textAlign:"center",marginBottom:24,background:payrollDragOver?"var(--sc-gold-soft)":"var(--sc-surface-2)",transition:"all 0.2s",cursor:"pointer"}}
                   onClick={()=>{const i=document.createElement("input");i.type="file";i.accept=".csv,.xlsx,.xls,.pdf";i.onchange=e=>handlePayrollFile(e.target.files[0]);i.click();}}>
-                  {payrollProcessing ? <div style={{color:"var(--sc-gold)",fontSize:14}}>⏳ Parsing payroll data...</div> : (
+                  {payrollProcessing ? <div style={{color:"var(--sc-gold)",fontSize:14}}><Icon name="clock" size={14} style={{ marginRight: 4 }} />Parsing payroll data...</div> : (
                     <div>
-                      <div style={{fontSize:28,marginBottom:8}}>💼</div>
+                      <div style={{fontSize:28,marginBottom:8}}><Icon name="briefcase" size={28} /></div>
                       <div style={{fontSize:14,fontWeight:500,marginBottom:4}}>Drop Gusto or ADP export here</div>
                       <div style={{fontSize:12,color:"var(--sc-text-2)"}}>CSV or Excel · AI auto-detects format and generates journal entries</div>
                       <div style={{marginTop:16,display:"flex",gap:10,justifyContent:"center"}}>

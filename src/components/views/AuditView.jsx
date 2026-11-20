@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { auditActionLabel } from "../../lib/plainLabels";
 import { useERP } from "../ERPContext";
 import LoadFailedNotice from "../LoadFailedNotice";
@@ -109,7 +110,7 @@ export default function AuditView() {
 
                 {loadFailures?.audit_log ? <LoadFailedNotice what="activity history" table="audit_log" /> : !companyDataLoaded ? <LoadingList what="your activity" /> : auditLog.length===0 ? (
                   <div style={{background:"var(--sc-surface)",border:"1px solid var(--sc-border)",borderRadius:14,padding:"60px 40px",textAlign:"center"}}>
-                    <div style={{fontSize:36,marginBottom:14}}>🔍</div>
+                    <div style={{fontSize:36,marginBottom:14}}><Icon name="search" size={36} /></div>
                     <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>No activity recorded yet</div>
                     <div style={{fontSize:13,color:"var(--sc-text-2)",maxWidth:380,margin:"0 auto",lineHeight:1.6}}>
                       Every invoice booking, recode, deletion, contact change, and reconciliation will appear here permanently.

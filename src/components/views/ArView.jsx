@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import ReceivedIntoSelect, { useReceivedIntoOptions } from "../ReceivedIntoSelect";
 import { payFromByKey, receivedIntoCopy } from "../../lib/payFrom";
 import NextStep from "../NextStep";
@@ -154,7 +155,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
 
                 {/* Tab bar */}
                 <div style={{ display:"flex", gap:2, background:"var(--sc-surface-2)", borderRadius:10, padding:3, border:"1px solid var(--sc-border)", marginBottom:20, width:"fit-content" }}>
-                  {[["inbox","📥 All unpaid"],["collections","📞 Overdue"],["aging","📊 By how late"]].map(([id,label])=>(
+                  {[["inbox","All unpaid"],["collections","Overdue"],["aging","By how late"]].map(([id,label])=>(
                     <button key={id} onClick={()=>setArView(id)} style={{ padding:"8px 18px", borderRadius:8, fontSize:13, fontWeight:arView===id?600:400,
                       background:arView===id?"var(--sc-border)":"transparent", border:"none", color:arView===id?"var(--sc-success)":"var(--sc-text-2)", cursor:"pointer",
                       display:"flex", alignItems:"center", gap:6 }}>
@@ -169,7 +170,7 @@ Overdue customers: ${[...new Set(arOverdue.map(i=>i.vendor))].join(", ")||"none"
                   <div>
                     {!companyDataLoaded && arAll.length===0 ? <LoadingList what="your invoices" /> : arAll.length===0 ? (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center" }}>
-                        <div style={{ fontSize:32, marginBottom:12 }}>📥</div>
+                        <div style={{ fontSize:32, marginBottom:12 }}><Icon name="inbox" size={32} /></div>
                         <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No unpaid invoices</div>
                         <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>When you bill a customer, the invoice shows up here until they pay. Send one from here, or drop an invoice you sent some other way on Home.</div>
                         <div style={{ marginTop:16, display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}><NextStep label="Send an invoice →" onClick={()=>setView("send-invoice")} /><NextStep secondary label="Upload on Home" onClick={()=>setView("home")} /></div>

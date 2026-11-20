@@ -23,7 +23,7 @@ describe("O97 — a file that is waiting must not be dressed as a file that is b
 
   it("no signal on a waiting tile carries the error vocabulary", () => {
     const tone = queueItemTone(rateLimited);
-    expect(queueItemIcon(tone, "🧾")).toBe("⏳");        // not ⚠
+    expect(queueItemIcon(tone, "receipt")).toBe("clock");        // not the alert icon (C762: icon names, not emojis)
     expect(queueItemChip(tone, rateLimited)).toBe("Waiting its turn");
     expect(queueItemChip(tone, rateLimited)).not.toMatch(/error|fail|problem/i);
   });
@@ -32,8 +32,8 @@ describe("O97 — a file that is waiting must not be dressed as a file that is b
     expect(queueItemChip(QUEUE_TONE.WAITING, rateLimited)).not.toMatch(/retry|retrying/i);
   });
 
-  it("the broken tile keeps ⚠ and its specific pipeline wording", () => {
-    expect(queueItemIcon(QUEUE_TONE.ERROR)).toBe("⚠");
+  it("the broken tile keeps the alert icon and its specific pipeline wording", () => {
+    expect(queueItemIcon(QUEUE_TONE.ERROR)).toBe("alert");
     expect(queueItemChip(QUEUE_TONE.ERROR, { result: { failed: true, to: "pipeline" } })).toBe("Needs a look");
     expect(queueItemChip(QUEUE_TONE.ERROR, unreadable)).toBe("Error");
   });

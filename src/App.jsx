@@ -116,6 +116,7 @@ import CompanySetup from "./components/CompanySetup";
 import CompanySwitcher from "./components/CompanySwitcher";
 import NavIcon from "./components/NavIcon";
 import OwnerTabBar from "./components/OwnerTabBar";
+import Icon from "./components/Icon";
 import LegalView from "./components/LegalView";
 import { ERPContext } from "./components/ERPContext";
 import { usePersistedView } from "./hooks/usePersistedView";
@@ -356,7 +357,7 @@ function AppWrapper() {
     return (
       <div style={{minHeight:"100vh",background:"var(--sc-bg)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",padding:24}}>
         <div data-companies-load-failed style={{maxWidth:420,textAlign:"center",color:"var(--sc-text-2)",fontSize:14,lineHeight:1.6}}>
-          <div style={{fontSize:28,marginBottom:10}}>⚠</div>
+          <div style={{marginBottom:10,color:"var(--sc-warning)"}}><Icon name="alert" size={28} /></div>
           We couldn't load your companies just now — this isn't a sign that you don't have one. Check your connection and try again.
           <div style={{marginTop:16}}>
             <button onClick={()=>loadCompanies(session)} style={{padding:"9px 22px",borderRadius:9,fontSize:13,fontWeight:600,background:"var(--sc-gold)",border:"none",color:"var(--sc-on-accent)",cursor:"pointer"}}>Try again</button>
@@ -421,7 +422,7 @@ function SentryFallback() {
   return (
     <div style={{ minHeight:"100vh", background:"var(--sc-bg)", display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans', system-ui, sans-serif" }}>
       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, boxShadow:"0 8px 28px rgba(17,24,39,0.10)", padding:32, maxWidth:480, width:"100%", textAlign:"center" }}>
-        <div style={{ fontSize:34, marginBottom:10 }}>⚠️</div>
+        <div style={{ marginBottom:10, color:"var(--sc-warning)" }}><Icon name="alert" size={32} /></div>
         <h1 style={{ fontSize:20, fontWeight:700, margin:"0 0 8px", color:"var(--sc-text)" }}>Something went wrong</h1>
         <p style={{ fontSize:14, color:"var(--sc-text-2)", lineHeight:1.6, margin:"0 0 20px" }}>{isSentryEnabled() ? "Our team has been notified. Refreshing usually fixes it — nothing you've recorded is lost; it's saved on the server." : "Refreshing usually fixes it — nothing you've recorded is lost; it's saved on the server."}</p>
         <button onClick={()=>window.location.reload()}
@@ -6942,8 +6943,10 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           });
           const explainData = await okAIResponse(explainRes);
           let unknownRecord;
+          let notDocWhat = null;   // C763 — set when the picture isn't a business document at all
           try {
             const parsed = aiJson(explainData, {});
+            if (parsed.is_business_document === false) notDocWhat = String(parsed.what_it_shows || parsed.document_type || "a photo").trim().toLowerCase() || "a photo";
             unknownRecord = {
               id: Date.now()+Math.random(),
               name: item.name,
@@ -6971,6 +6974,19 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
               posted: false,
             };
           }
+          // ★ C763 — NOT A BUSINESS DOCUMENT (a photo of a coffee cup). It used to land as "We couldn't tell
+          // what this is … our team will take a look" and wait in our review queue — so a photo of a coffee
+          // looked like a glitch to the owner and was work for us. Now: the photo stays in Documents (it was
+          // stored before it was read), nothing is recorded, the intake row is closed as not-a-transaction
+          // (REJECTED — never held, never a hole), and the tile says so in words, with a door to record it
+          // as a purchase if that's what it was (Home's tile → the assistant, C755's record_purchase).
+          if (notDocWhat) {
+            const notDocResult = { not_document: true, what: notDocWhat };
+            setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"unknown", result: notDocResult} : q));
+            logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"unknown", result: notDocResult });
+            markIntake(item.intake_id, INTAKE_STATUS.REJECTED, { detail: `not a business document (${notDocWhat}) — kept in Documents, nothing recorded` });
+            logAudit("upload_not_a_document", `${item.name} isn't a business document (${notDocWhat}) — kept in Documents, nothing recorded`, null, { file: item.name, document_id: durableDocId ? String(durableDocId) : null });
+          } else {
           // ★ C364 — the record is WRITTEN, not merely held. `unknown_documents` had the exact
           // shape and no writer; a reload emptied the Review section and lost every watch
           // trigger. Needs the durable document id (NOT NULL, correctly) — a file the durable
@@ -6987,6 +7003,7 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
           setUploadQueue(prev => prev.map(q => q.id===item.id ? {...q, status:"done", type:"unknown", result: unknownResult} : q));
           logUploadUpdate(item.upload_log_id, { status:"done", doc_type:"unknown", result: unknownResult });
           markIntake(item.intake_id, INTAKE_STATUS.HELD, { detail: "unrecognized document — held for review (catch-all)" });   // terminal: never void
+          }
         }
 
     } catch(e) {
@@ -8329,13 +8346,13 @@ function ERP({ session, currentCompany, companies, onSwitchCompany, setCurrentCo
 
   // ── CONTRACT HANDLER ─────────────────────────────────────────────────────────
   const CONTRACT_TYPES = {
-    loan: { label:"Loan / Debt", color:"var(--sc-error)", icon:"🏦" },
-    revenue_contract: { label:"Revenue Contract", color:"var(--sc-success)", icon:"📈" },
-    lease: { label:"Lease", color:"var(--sc-warning)", icon:"🏢" },
-    subscription_paid: { label:"Subscription (Paid)", color:"var(--sc-gold)", icon:"💳" },
-    subscription_received: { label:"Subscription (Received)", color:"var(--sc-gold)", icon:"📦" },
-    equipment_financing: { label:"Equipment Financing", color:"#EC4899", icon:"⚙️" },
-    service_agreement: { label:"Service Agreement / Retainer", color:"#14B8A6", icon:"🤝" },
+    loan: { label:"Loan / Debt", color:"var(--sc-error)", icon:"bank" },
+    revenue_contract: { label:"Revenue Contract", color:"var(--sc-success)", icon:"trend" },
+    lease: { label:"Lease", color:"var(--sc-warning)", icon:"building" },
+    subscription_paid: { label:"Subscription (Paid)", color:"var(--sc-gold)", icon:"card" },
+    subscription_received: { label:"Subscription (Received)", color:"var(--sc-gold)", icon:"box" },
+    equipment_financing: { label:"Equipment Financing", color:"#EC4899", icon:"gear" },
+    service_agreement: { label:"Service Agreement / Retainer", color:"#14B8A6", icon:"users" },
   };
 
   const handleContractFile = async (file) => {
@@ -8760,7 +8777,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     // One notification per unique doc matched
     const uniqueDocs = [...new Set(matches.map(m => m.docType))];
     uniqueDocs.forEach(docType => {
-      showNotification(`🔔 Watch triggered: ${docType} — a related transaction was just booked. Review in Needs Review.`);
+      showNotification(`Watch triggered: ${docType} — a related transaction was just booked. Review in Needs Review.`);
     });
     setView && setHasUnread && setHasUnread(true);
   };
@@ -9863,7 +9880,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         && drainStatus?.copy
         && (drainStatus.plan?.counts?.wait > 0 || drainStatus.plan?.counts?.deferred > 0 || drainStatus.plan?.unresumable > 0) && (
         <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", zIndex:999, background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:12, padding:"12px 20px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 8px 32px rgba(0,0,0,0.6)", maxWidth:520 }}>
-          <span style={{ fontSize:15 }}>🗂</span>
+          <Icon name="folder" size={16} />
           <div style={{ fontSize:12, color:"var(--sc-text)", lineHeight:1.45 }}>{drainStatus.copy}</div>
         </div>
       )}
@@ -9879,7 +9896,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           not something this banner can observe. */}
       {aiDegraded && degradedBannerCopy(aiDegraded.kind) && (
         <div role="status" style={{ flexShrink:0, background:"var(--sc-warning-soft)", borderBottom:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
-          <span style={{ fontSize:16 }}>⏸</span>
+          <Icon name="pause" size={17} />
           <span style={{ flex:1 }}>{degradedBannerCopy(aiDegraded.kind)}</span>
           <button onClick={()=>setAiDegraded(null)} style={{ background:"none", border:"1px solid currentColor", borderRadius:6, padding:"3px 10px", color:"inherit", fontSize:11, cursor:"pointer" }}>Dismiss</button>
         </div>
@@ -9888,14 +9905,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         {/* BOOKING VISIBILITY FAILURE — non-dismissable; a saved entry isn't displaying. */}
         {visibilityAlert && (
           <div role="alert" style={{ flexShrink:0, background:"var(--sc-warning-soft)", borderBottom:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", padding:"11px 24px", display:"flex", alignItems:"center", gap:12, fontSize:13, fontWeight:600, zIndex:51 }}>
-            <span style={{ fontSize:16 }}>⚠</span>
+            <Icon name="alert" size={17} />
             <span>A transaction was saved but isn't displaying correctly. Refresh the page — if it's still missing, contact support.</span>
           </div>
         )}
         {/* SUPPORT MODE banner — persistent while a platform admin is viewing a client */}
         {supportMode && (
           <div style={{ flexShrink:0, background:"linear-gradient(90deg,var(--sc-warning),#F97316)", color:"var(--sc-on-accent)", padding:"10px 24px", display:"flex", alignItems:"center", gap:14, flexWrap:"wrap", boxShadow:"0 2px 8px rgba(234,88,12,0.35)", zIndex:50 }}>
-            <span style={{ fontSize:16 }}>🛟</span>
+            <Icon name="help" size={17} />
             <div style={{ flex:"1 1 320px", minWidth:0, fontSize:13, fontWeight:600 }}>
               SUPPORT MODE — Viewing <strong>{supportMode.company?.name || currentCompany?.name}</strong> as Platform Admin. Every action is real and logged.
             </div>
@@ -10066,7 +10083,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
           {/* Review banner — visible from any non-dashboard view when items need input */}
           {clarificationQueue.filter(c=>!c.resolved).length > 0 && view !== "home" && view !== "dashboard" && (
             <div style={{ background:"var(--sc-warning-soft)", borderBottom:"1px solid var(--sc-warning-soft)", padding:"10px 32px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
-              <div style={{ fontSize:13, color:"var(--sc-warning)" }}>⚠ {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need{clarificationQueue.filter(c=>!c.resolved).length===1?"s":""} review before booking</div>
+              <div style={{ fontSize:13, color:"var(--sc-warning)", display:"flex", alignItems:"center", gap:6 }}><Icon name="alert" size={15} /> {clarificationQueue.filter(c=>!c.resolved).length} invoice{clarificationQueue.filter(c=>!c.resolved).length!==1?"s":""} need{clarificationQueue.filter(c=>!c.resolved).length===1?"s":""} review before booking</div>
               <button onClick={()=>setView("home")} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", color:"var(--sc-warning)", borderRadius:8, padding:"5px 12px", fontSize:12, cursor:"pointer" }}>Review →</button>
             </div>
           )}
@@ -10182,12 +10199,12 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       {/* ── NOTIFICATION CENTER (Item 55) ──────────────────────────────────── */}
       {notifOpen && (() => {
         const META = {
-          tax_deadline:        { icon:"📅", color:"var(--sc-error)" },
-          anomaly:             { icon:"⚠",  color:"var(--sc-warning)" },
-          reconciliation:      { icon:"🏦", color:"var(--sc-warning)" },
-          needs_review:        { icon:"📄", color:"var(--sc-gold-deep)" },
-          report_ready:        { icon:"📊", color:"var(--sc-success)" },
-          monthly_report:      { icon:"🗓️", color:"var(--sc-gold)" },
+          tax_deadline:        { icon:"calendar", color:"var(--sc-error)" },
+          anomaly:             { icon:"alert",  color:"var(--sc-warning)" },
+          reconciliation:      { icon:"bank", color:"var(--sc-warning)" },
+          needs_review:        { icon:"document", color:"var(--sc-gold-deep)" },
+          report_ready:        { icon:"chart", color:"var(--sc-success)" },
+          monthly_report:      { icon:"calendar", color:"var(--sc-gold)" },
           ai_action:           { icon:"✦",  color:"var(--sc-gold)" },
           recurring_suggestion:{ icon:"↻",  color:"var(--sc-gold)" },
         };
@@ -10206,14 +10223,14 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
               <div style={{ flex:1, overflowY:"auto" }}>
                 {notifications.length===0 ? (
                   <div style={{ padding:"48px 24px", textAlign:"center", color:"var(--sc-text-mut)", fontSize:13, lineHeight:1.6 }}>
-                    <div style={{ fontSize:32, marginBottom:10 }}>🔔</div>You're all caught up. New alerts about taxes, unusual activity, and things to check will show up here.
+                    <div style={{ marginBottom:10 }}><Icon name="bell" size={30} /></div>You're all caught up. New alerts about taxes, unusual activity, and things to check will show up here.
                   </div>
                 ) : notifications.map(n => {
                   const m = META[n.type] || { icon:"•", color:"var(--sc-text-2)" };
                   return (
                     <div key={n.id} onClick={()=>openNotification(n)} style={{ display:"flex", gap:12, padding:"14px 18px", borderBottom:"1px solid var(--sc-surface-2)", cursor:"pointer", background:n.read?"var(--sc-surface)":"var(--sc-gold-soft)", transition:"background .12s" }}
                       onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=n.read?"var(--sc-surface)":"var(--sc-gold-soft)"}>
-                      <div style={{ width:34, height:34, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, background:m.color+"18", color:m.color }}>{m.icon}</div>
+                      <div style={{ width:34, height:34, borderRadius:9, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, background:m.color+"18", color:m.color }}><Icon name={m.icon} size={17} /></div>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-text)", lineHeight:1.4 }}>{n.title}</div>
                         {n.description && <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:2, lineHeight:1.45 }}>{n.description}</div>}
@@ -10335,7 +10352,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                           <div style={{ fontSize:11, color:"var(--sc-text-2)", marginBottom:4 }}>{m.created_at ? new Date(m.created_at).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : ""}</div>
                           {(m.actions||[]).map((a,j)=>(
                             <div key={j} style={{ fontSize:12, color:"var(--sc-text)", lineHeight:1.5, display:"flex", gap:6, marginBottom:3 }}>
-                              <span style={{ color:"var(--sc-gold)", flexShrink:0 }}>⚡</span><span>{a}</span>
+                              <span style={{ color:"var(--sc-gold)", flexShrink:0 }}><Icon name="check" size={14} /></span><span>{a}</span>
                             </div>
                           ))}
                         </div>
@@ -10372,7 +10389,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
                       <div style={{ fontSize:10, fontWeight:700, color:"var(--sc-success)", letterSpacing:1, marginBottom:8 }}>✓ ACTIONS TAKEN</div>
                       {msg.actions.map((a,i)=>(
                         <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8, fontSize:12, color:"var(--sc-success)", marginBottom: i < msg.actions.length-1 ? 6 : 0, lineHeight:1.4 }}>
-                          <span style={{ color:"var(--sc-success)", flexShrink:0, marginTop:1 }}>⚡</span>
+                          <span style={{ color:"var(--sc-success)", flexShrink:0, marginTop:1 }}><Icon name="check" size={14} /></span>
                           <span>{a}</span>
                         </div>
                       ))}
@@ -10403,7 +10420,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             {pendingAIActions && (
               <div style={{ margin:"0 0 14px", border:"1px solid var(--sc-warning)", background:"var(--sc-warning-soft)", borderRadius:12, padding:"12px 14px" }}>
                 <div style={{ fontSize:12, fontWeight:700, color:"var(--sc-warning)", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
-                  <span>⚠</span> Confirm before I make {pendingAIActions.items.length===1?"this change":"these changes"}
+                  <Icon name="alert" size={15} /> Confirm before I make {pendingAIActions.items.length===1?"this change":"these changes"}
                 </div>
                 {pendingAIActions.items.map((it, i) => (
                   <div key={i} style={{ fontSize:13, color:"var(--sc-text)", marginBottom:8 }}>

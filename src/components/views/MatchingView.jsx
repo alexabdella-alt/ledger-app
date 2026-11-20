@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { matchAmountProblem } from "../../lib/bankMatch";   // C711
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
@@ -65,7 +66,7 @@ export default function MatchingView() {
                 {matchQueue.length > 0 && (
                   <div style={{ marginBottom:28 }}>
                     <div style={{ fontSize:11, color:"var(--sc-warning)", letterSpacing:2, marginBottom:14, display:"flex", alignItems:"center", gap:8 }}>
-                      <span>⚠ NEEDS REVIEW</span>
+                      <span><Icon name="alert" size={14} style={{ marginRight: 4 }} />NEEDS REVIEW</span>
                       <span style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:20, padding:"1px 10px", fontSize:11 }}>{matchQueue.length}</span>
                     </div>
                     <div style={{ display:"flex", flexDirection:"column", gap:12 }}>

@@ -1,4 +1,5 @@
 import { plainWriteError } from "../../lib/plainWriteError";
+import Icon from "../Icon";
 import React from "react";
 import { useERP } from "../ERPContext";
 import { parseQbo, normalizeQbo, matchAccount, isQboBankFile } from "../../lib/qboParser";
@@ -418,7 +419,7 @@ export default function QBOImportView() {
             onClick={() => fileRef.current?.click()}
             style={{ border: `2px dashed ${dragOver ? "var(--sc-gold)" : "var(--sc-border-2)"}`, borderRadius: 14, padding: "48px 24px", textAlign: "center", cursor: "pointer", background: dragOver ? "var(--sc-bg)" : "var(--sc-surface)" }}>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleFile(f); }} />
-            <div style={{ fontSize: 30, marginBottom: 10 }}>📑</div>
+            <div style={{ fontSize: 30, marginBottom: 10 }}><Icon name="document" size={30} /></div>
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{dragOver ? "Release to upload" : "Drop your QuickBooks export here"}</div>
             <div style={{ fontSize: 13, color: "var(--sc-text-mut)" }}>CSV or Excel · up to {ROW_CAP.toLocaleString()} transactions</div>
           </div>

@@ -203,7 +203,7 @@ export function visibleNav({ role = "owner", isPlatformAdmin = false, previewAsO
   if (reviewer) sections.push(NAV_SECTION_REVIEW);
   // The Admin panel is its own unlabelled section at the foot — a platform-admin
   // tool, deliberately not filed under any of the bookkeeping headings.
-  if (reviewer && isPlatformAdmin) sections.push({ id: "admin", label: null, items: [["admin", "⚙ Admin"]] });
+  if (reviewer && isPlatformAdmin) sections.push({ id: "admin", label: null, items: [["admin", "Admin"]] });
   if (inSettings) {
     // C636 — on the owner's seat the single "Settings" row opens up into its pages while you are in them.
     if (!reviewer) sections.splice(sections.findIndex((s) => s.id === "settings-entry"), 1);

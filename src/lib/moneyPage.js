@@ -44,8 +44,8 @@ export function moneyLinks({ contacts = [], docs = [] } = {}) {
   const vendors = (contacts || []).filter((c) => c && c.type !== "customer").length;
   const customers = (contacts || []).filter((c) => c && (c.type === "customer" || c.type === "both")).length;
   return [
-    { view: "docs", icon: "📄", label: "Documents", count: (docs || []).length, sub: "Every receipt, bill and statement you've sent" },
-    { view: "vendors", icon: "🏪", label: "Vendors", count: vendors, sub: "Who you pay" },
-    { view: "customers", icon: "🤝", label: "Customers", count: customers, sub: "Who pays you" },
+    { view: "docs", icon: "document", label: "Documents", count: (docs || []).length, sub: "Every receipt, bill and statement you've sent" },
+    { view: "vendors", icon: "store", label: "Vendors", count: vendors, sub: "Who you pay" },
+    { view: "customers", icon: "users", label: "Customers", count: customers, sub: "Who pays you" },
   ];
 }

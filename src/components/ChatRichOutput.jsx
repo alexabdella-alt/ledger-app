@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "./Icon";
 import { downloadCSV } from "../lib/insights";
 import { fmtMoney } from "../lib/format";
 
@@ -202,7 +203,7 @@ export default function ChatRichOutput({ rich, onNavigate }) {
           return (
             <button key={idx} onClick={() => downloadCSV(item.filename, item.headers, item.rows)}
               style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 8, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", borderRadius: 10, padding: "9px 14px", color: "var(--sc-gold)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-              ⬇ Download {item.filename}
+              <Icon name="download" size={14} style={{ marginRight: 4 }} />Download {item.filename}
             </button>
           );
         }

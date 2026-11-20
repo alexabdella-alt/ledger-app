@@ -56,7 +56,7 @@ export function queueItemTone(item = {}, { pendingReview = false } = {}) {
 export function queueItemChip(tone, item = {}) {
   switch (tone) {
     case QUEUE_TONE.SUCCESS: return "Done";
-    case QUEUE_TONE.REVIEW:  return item.result?.to === "choose" ? "Needs your answer" : "⚠ Needs Review";
+    case QUEUE_TONE.REVIEW:  return item.result?.to === "choose" ? "Needs your answer" : "Needs review";
     case QUEUE_TONE.WAITING: return "Waiting its turn";
     case QUEUE_TONE.ERROR:
       // The pipeline's own outcome is more specific than the generic word, so prefer it.
@@ -67,13 +67,13 @@ export function queueItemChip(tone, item = {}) {
 
 // ★ AN HOURGLASS, NOT A WARNING TRIANGLE. The glyph is the first thing read and the last
 // thing doubted; ⚠ on a file that is fine is the whole bug in one character.
-export function queueItemIcon(tone, typeIcon = "📄") {
+export function queueItemIcon(tone, typeIcon = "document") {   // C762 — icon NAMES (components/Icon.jsx)
   switch (tone) {
     case QUEUE_TONE.SUCCESS:
     case QUEUE_TONE.REVIEW:  return typeIcon;
-    case QUEUE_TONE.WAITING: return "⏳";
-    case QUEUE_TONE.ERROR:   return "⚠";
-    default: return "📄";
+    case QUEUE_TONE.WAITING: return "clock";
+    case QUEUE_TONE.ERROR:   return "alert";
+    default: return "document";
   }
 }
 
@@ -139,6 +139,8 @@ export function keepUnanswered(items = []) {
 // words. The owner saw "⟳ Identifying document type…", "⟳ Processing as Invoice…" (for a receipt)
 // and "⚠ Unknown · Entry proposed — needs review". The accountant keeps the precise wording.
 // Returns null for states this does not describe (the outcome sentences live elsewhere).
+// C763 — and the door offered under a not-a-document tile: record it as a purchase if it was one.
+export const NOT_DOCUMENT_ACTION = { label: "It was a business purchase", prefill: (what) => `I bought ${String(what || "this").trim()} for the business. I paid $` };
 const OWNER_KIND = { invoice: "bill or receipt", bank_statement: "bank statement", contract: "agreement" };
 export function queueItemStatusCopy(item = {}, { cockpit = false, hasAccountant = true } = {}) {
   const st = item.status;
@@ -150,8 +152,15 @@ export function queueItemStatusCopy(item = {}, { cockpit = false, hasAccountant 
     }
     return OWNER_KIND[item.type] ? `⟳ Reading your ${OWNER_KIND[item.type]}…` : "⟳ Reading…";
   }
+  // ★ C763 — a picture that isn't a business document: say what it looked like, that it's kept, and that
+  // nothing was recorded — not "we couldn't tell what this is" (which read as a glitch).
+  if (st === "done" && item.type === "unknown" && item.result && item.result.not_document) {
+    const what = String(item.result.what || "a photo").trim();
+    return cockpit ? `Not a business document (${what}) — kept in Documents, nothing recorded`
+      : `This doesn't look like a receipt or bill — it looks like ${what}. We kept the photo in Documents; nothing was added to your books.`;
+  }
   if (st === "done" && item.type === "unknown" && item.result) {
-    if (cockpit) return `⚠ ${item.result.document_type || "Unknown"} · ${item.result.entry_needed ? "Entry proposed — needs review" : "No entry needed — flagged for review"}`;
+    if (cockpit) return `${item.result.document_type || "Unknown"} · ${item.result.entry_needed ? "Entry proposed — needs review" : "No entry needed — flagged for review"}`;
     return hasAccountant
       ? "We couldn't tell what this is — it's saved in Documents, and our team will take a look."
       : "We couldn't tell what this is — it's saved in Documents.";

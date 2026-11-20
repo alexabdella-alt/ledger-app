@@ -19,6 +19,7 @@ import { OWNER_MONEY_FILTERS } from "../../lib/moneyPage";
 import { ownerAccountName } from "../../lib/categoryLabel";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { linkedDocIds, hasSourceDoc, RECEIPT_MARK, RECEIPT_MARK_LABEL } from "../../lib/sourceDoc";
+import Icon from "../Icon";
 
 // C637 — `embedded`: drawn inside the owner's Money page, which carries its own title.
 export default function BooksView({ embedded = false } = {}) {
@@ -260,12 +261,12 @@ export default function BooksView({ embedded = false } = {}) {
                 <tr><td colSpan={6} style={{ padding:"44px", textAlign:"center", color:"var(--sc-text-2)", fontSize:13 }}>No contracts yet. Drop a lease or contract on Home — AI extracts the ASC 842 schedule automatically.</td></tr>
               ) : (contracts||[]).filter(c => !q || (c.counterparty||"").toLowerCase().includes(q) || (c.contract_type||"").toLowerCase().includes(q) || (c.description||"").toLowerCase().includes(q)).map((c,idx)=>{
                 const posted = (c.posted_entries?.length||0) >= (c.journal_entries?.length||0) && (c.journal_entries?.length||0)>0;
-                const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"📄" };
+                const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"document" };
                 return (
                   <tr key={c.id||idx} onClick={()=>setSelContract(c)} style={{ cursor:"pointer", background:idx%2?"var(--sc-bg)":"var(--sc-surface)", borderBottom:"1px solid var(--sc-surface-2)" }}
                     onMouseEnter={e=>e.currentTarget.style.background="var(--sc-surface-2)"} onMouseLeave={e=>e.currentTarget.style.background=idx%2?"var(--sc-bg)":"var(--sc-surface)"}>
                     <td style={{ padding:"12px 16px", fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{c.counterparty||"—"}</td>
-                    <td style={{ padding:"12px 16px" }}><span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px" }}>{ct.icon} {ct.label}</span></td>
+                    <td style={{ padding:"12px 16px" }}><span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px", display:"inline-flex", alignItems:"center", gap:5 }}><Icon name={ct.icon} size={12} />{ct.label}</span></td>
                     <td style={{ padding:"12px 16px", textAlign:"right", fontSize:13, fontFamily:"'DM Mono',monospace", color:"var(--sc-error)" }}>{c.payment_amount?fmt(c.payment_amount):"—"}</td>
                     <td style={{ padding:"12px 16px", fontSize:12, color:"var(--sc-text-2)" }}>{c.lease_term_months?`${c.lease_term_months} mo`:"—"}</td>
                     <td style={{ padding:"12px 16px" }}><span style={pill(posted?"var(--sc-success)":"var(--sc-warning)")}>{posted?"Posted":"Draft"}</span></td>
@@ -347,7 +348,7 @@ export default function BooksView({ embedded = false } = {}) {
             ) : rows.length===0 ? (
               <tr><td colSpan={8} style={{ padding:0 }}>
                 <div style={{ padding:"56px 32px", textAlign:"center" }}>
-                  <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24 }}>{search||filter!=="all"||vendorScoped?"🔍":"📭"}</div>
+                  <div style={{ width:52, height:52, borderRadius:14, background:"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:24, color:"var(--sc-text-2)" }}><Icon name={search||filter!=="all"||vendorScoped?"search":"inbox"} size={24} /></div>
                   <div style={{ fontSize:15, fontWeight:600, color:"var(--sc-text)", marginBottom:6 }}>{search||filter!=="all"||vendorScoped?"No matching transactions":"No transactions yet"}</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-mut)", marginBottom:20, maxWidth:340, marginLeft:"auto", marginRight:"auto", lineHeight:1.6 }}>{search||filter!=="all"||vendorScoped?"Try clearing your search or switching filters to see more.":"Upload a bill, receipt, or bank statement and it'll appear here, already sorted into the right category."}</div>
                   {!(search||filter!=="all"||vendorScoped) && (
@@ -372,7 +373,7 @@ export default function BooksView({ embedded = false } = {}) {
                         style={{ cursor:"pointer" }} />
                     </td>
                     <td className="sc-c-date" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-mut)", whiteSpace:"nowrap" }}>{inv.date?fmtDate(inv.date):"—"}</td>
-                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span>{hasSourceDoc(inv, receiptIds) && <span data-receipt-mark title={RECEIPT_MARK_LABEL} aria-label={RECEIPT_MARK_LABEL} role="img" style={{ fontSize:13, flexShrink:0 }}>{RECEIPT_MARK}</span>}</div></td>
+                    <td className="sc-c-party" style={{ padding:"0 16px" }}><div style={{ display:"flex", alignItems:"center", gap:10 }}><span style={{ width:28,height:28,borderRadius:8,background:vendorColor(party),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"var(--sc-on-accent)",flexShrink:0 }}>{initials(party)}</span><span style={{ fontSize:13, fontWeight:500, color:"var(--sc-text)" }}>{party||"—"}</span>{hasSourceDoc(inv, receiptIds) && <span data-receipt-mark title={RECEIPT_MARK_LABEL} aria-label={RECEIPT_MARK_LABEL} role="img" style={{ flexShrink:0, color:"var(--sc-text-2)", display:"inline-flex" }}><Icon name={RECEIPT_MARK} size={14} /></span>}</div></td>
                     <td className="sc-c-desc" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{readableDates(cockpit ? inv.description : descAfterParty(inv.description, party))||"—"}</td>
                     <td className="sc-c-cat" style={{ padding:"0 16px", fontSize:13, color:"var(--sc-text-2)", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cockpit && <span style={{ fontFamily:"'DM Mono',monospace", color:"var(--sc-text-mut)", marginRight:6 }}>{cls.account.code}</span>}{cockpit ? cls.account.name : ownerAccountName(cls.account.name)}{inv._lineCount > 1 && <span style={{ color:"var(--sc-text-mut)", marginLeft:6, fontSize:11 }}>· {inv._lineCount} lines</span>}</td>
                     <td className="sc-c-amt" style={{ padding:"0 16px", textAlign:"right", fontSize:13, fontWeight:600, fontFamily:"'DM Mono',monospace", color: cls.inflow?"var(--sc-success)":"var(--sc-error)", whiteSpace:"nowrap" }}>{cls.inflow?"+":"−"}{fmt(listAmount(inv))}</td>
@@ -424,7 +425,7 @@ export default function BooksView({ embedded = false } = {}) {
       {cockpit && (reconciliations||[]).length>0 && (
         <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, marginTop:16, overflow:"hidden" }}>
           <div onClick={()=>setShowReconHistory(s=>!s)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-            <div style={{ fontSize:13, fontWeight:600 }}>🏦 Bank reconciliation history</div>
+            <div style={{ fontSize:13, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}><Icon name="bank" size={15} />Bank reconciliation history</div>
             <span style={{ fontSize:12, color:"var(--sc-gold)", fontWeight:600 }}>{showReconHistory?"Hide ▲":"Show ▼"}</span>
           </div>
           {showReconHistory && (
@@ -449,7 +450,7 @@ export default function BooksView({ embedded = false } = {}) {
       {/* ── CONTRACT SLIDE-IN ── */}
       {cockpit && selContract && (() => {
         const c = selContract;
-        const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"📄" };
+        const ct = (CONTRACT_TYPES && CONTRACT_TYPES[c.contract_type]) || { label:c.contract_type||"Contract", color:"var(--sc-gold)", icon:"document" };
         const entries = c.journal_entries || [];
         const postedCount = c.posted_entries?.length || 0;
         return createPortal((
@@ -458,7 +459,7 @@ export default function BooksView({ embedded = false } = {}) {
             <div onClick={e=>e.stopPropagation()} style={{ width:520, maxWidth:"94vw", height:"100%", background:"var(--sc-surface)", borderLeft:"1px solid var(--sc-border)", boxShadow:"-12px 0 40px rgba(17,24,39,0.12)", display:"flex", flexDirection:"column", animation:"booksIn2 .25s cubic-bezier(.22,1,.36,1)" }}>
               <div style={{ padding:"20px 24px", borderBottom:"1px solid var(--sc-surface-2)", display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
                 <div style={{ minWidth:0 }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px" }}>{ct.icon} {ct.label}</span>
+                  <span style={{ fontSize:11, fontWeight:600, color:ct.color, background:ct.color+"14", border:`1px solid ${ct.color}33`, borderRadius:20, padding:"2px 9px", display:"inline-flex", alignItems:"center", gap:5 }}><Icon name={ct.icon} size={12} />{ct.label}</span>
                   <div style={{ fontSize:18, fontWeight:600, marginTop:8, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{c.counterparty||"Contract"}</div>
                 </div>
                 <button onClick={()=>setSelContract(null)} style={{ background:"none", border:"none", color:"var(--sc-text-2)", fontSize:24, cursor:"pointer", lineHeight:1 }}>×</button>

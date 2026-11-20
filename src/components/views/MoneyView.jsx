@@ -4,6 +4,7 @@ import { fmtMoney } from "../../lib/format";
 import { glAccountBalance, openPayablesGL, openReceivablesGL } from "../../lib/reports";
 import { moneySummary, moneyLinks, MONEY_PAGE_COPY } from "../../lib/moneyPage";
 import BooksView from "./BooksView";
+import Icon from "../Icon";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // C637 — MONEY IS ONE LIST. The owner's Money page (C636) was a set of tiles that each opened a
@@ -44,7 +45,7 @@ export default function MoneyView() {
         {links.map((l) => (
           <button key={l.view} data-money-link={l.view} onClick={() => setView(l.view)}
             style={{ textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: "12px 16px", cursor: "pointer", fontFamily: "var(--sc-font-ui)", color: "var(--sc-text)" }}>
-            <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--sc-gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{l.icon}</span>
+            <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: 10, background: "var(--sc-gold-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0, color: "var(--sc-gold)" }}><Icon name={l.icon} size={19} /></span>
             <span className="sc-mlink-text" style={{ minWidth: 0, flex: 1 }}>
               <span style={{ display: "block", fontSize: 15, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.label}</span>
               <span className="sc-mlink-sub" style={{ display: "block", fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>{l.sub}</span>

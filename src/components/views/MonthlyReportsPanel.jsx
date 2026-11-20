@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { formatPeriod, buildMonthlyReport, glCashOnHand } from "../../lib/reports";
 import { downloadCSV } from "../../lib/insights";
@@ -81,7 +82,7 @@ export default function MonthlyReportsPanel() {
         <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginBottom: 16 }}>Your month-end figures — worked out from your books as they stand, so every number here matches your Home page and your P&L.</div>
         {reports.length === 0 && (
           <div style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 14, padding: 32, textAlign: "center", color: "#888" }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🗓️</div>
+            <div style={{ fontSize: 28, marginBottom: 8 }}><Icon name="calendar" size={28} /></div>
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)", marginBottom: 4 }}>No monthly reports yet</div>
             <div style={{ fontSize: 13 }}>Reports appear here for each month you have booked activity.</div>
           </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { PLATFORM_ADMIN_EMAILS } from "../../lib/constants";
 
@@ -188,7 +189,7 @@ export default function SecurityView() {
         <div style={{ width: 42, height: 42, borderRadius: 11, background: overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "var(--sc-on-accent)", flexShrink: 0 }}>{overall === "pass" ? "✓" : overall === "warn" ? "!" : "✕"}</div>
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: overall === "pass" ? C.pass : overall === "warn" ? C.warn : C.fail }}>
-            {!r ? "Running checks…" : issues > 0 ? `${issues} issue${issues > 1 ? "s" : ""} found ⚠` : warns > 0 ? `${warns} check${warns > 1 ? "s" : ""} need attention` : "All checks passed ✓"}
+            {!r ? "Running checks…" : issues > 0 ? `${issues} issue${issues > 1 ? "s" : ""} found ` : warns > 0 ? `${warns} check${warns > 1 ? "s" : ""} need attention` : "All checks passed ✓"}
           </div>
           <div style={{ fontSize: 12, color: "var(--sc-text-mut)", marginTop: 3 }}>
             {lastChecked ? `Last checked ${lastChecked.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}` : "—"}
@@ -201,7 +202,7 @@ export default function SecurityView() {
       </div>
 
       <div style={{ fontSize: 13, color: C.warn, background: "var(--sc-warning-soft)", border: "1px solid var(--sc-warning-soft)", borderRadius: 10, padding: "10px 14px", marginBottom: 18, fontWeight: 500 }}>
-        ⚠ Run this check before adding any new client.
+        <Icon name="alert" size={14} style={{ marginRight: 4 }} />Run this check before adding any new client.
       </div>
 
       {/* TEST 1 — RLS enabled */}

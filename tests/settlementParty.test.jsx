@@ -57,8 +57,10 @@ describe("C541 — the opening entry", () => {
     const list = text(renderViewHtml(BooksView, { ...POPULATED, navSeat, companyDataLoaded: true }));
     expect(list).toMatch(/Cash \+\$10,000\.00 Starting balance/);
     expect(list).not.toMatch(/1000 Cash/);   // C575 — an owner sees the category's name, not its number
-    const home = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], invoices: POPULATED.invoices.filter((r) => r.source === "opening_balance"), navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C731 — the accountant's list shows the latest 10   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
-    expect(home).toMatch(/🏁 Starting balances recorded[^🧾💰]*\+\$10,000\.00/);
+    const homeHtml = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], invoices: POPULATED.invoices.filter((r) => r.source === "opening_balance"), navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true });
+    const home = text(homeHtml);   // C731 — the accountant's list shows the latest 10   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
+    expect(home).toMatch(/Starting balances recorded[^$]*\+\$10,000\.00/);
+    expect(homeHtml).toMatch(/data-icon="flag"(?:(?!data-icon=)[^])*Starting balances recorded/);   // C762 — was 🏁
     expect(home).not.toContain("Opening balances as of 2026-01-01 — Cash");
   });
   it("a transfer between two asset accounts is in when cash is debited, out when credited", () => {

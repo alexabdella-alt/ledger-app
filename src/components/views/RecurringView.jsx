@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { makeKeyedInFlight } from "../../lib/oneInFlight";
@@ -74,7 +75,7 @@ export default function RecurringView() {
                 {/* Due now alert */}
                 {due.length>0 && (
                   <div style={{background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:12,padding:"14px 20px",marginBottom:20,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{fontSize:13,color:"var(--sc-warning)",fontWeight:500}}>⏰ {due.length} regular cost{due.length!==1?"s are":" is"} due — add {due.length!==1?"them":"it"} to your bills</div>
+                    <div style={{fontSize:13,color:"var(--sc-warning)",fontWeight:500}}><Icon name="clock" size={14} style={{ marginRight: 4 }} />{due.length} regular cost{due.length!==1?"s are":" is"} due — add {due.length!==1?"them":"it"} to your bills</div>
                     <button onClick={()=>due.forEach(runRecurring)} style={{padding:"7px 16px",borderRadius:8,fontSize:12,fontWeight:600,background:"var(--sc-warning)",border:"none",color:"#000",cursor:"pointer"}}>Add all to bills</button>
                   </div>
                 )}

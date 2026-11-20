@@ -34,7 +34,7 @@ describe("a file we couldn't place", () => {
     expect(queueItemStatusCopy(item, { hasAccountant: false })).toBe("We couldn't tell what this is — it's saved in Documents.");
   });
   it("the accountant sees the type and whether an entry is proposed", () => {
-    expect(queueItemStatusCopy(item, { cockpit: true })).toBe("⚠ W-9 · Entry proposed — needs review");
+    expect(queueItemStatusCopy(item, { cockpit: true })).toBe("W-9 · Entry proposed — needs review");
   });
   it("Home reads it from the one function", () => {
     const src = readFileSync("src/components/views/DashboardView.jsx", "utf8");

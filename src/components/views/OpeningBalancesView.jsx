@@ -1,4 +1,5 @@
 import { OBE_CODE, OBE_ROLE } from "../../lib/openingBalances";
+import Icon from "../Icon";
 import { openingGridValues, openingGridToPost } from "../../lib/openingGrid";
 import React from "react";
 import { showCodesFor, ownerAccountName } from "../../lib/categoryLabel";
@@ -100,7 +101,7 @@ export default function OpeningBalancesView() {
                   <div style={{fontSize:13,color:"var(--sc-text-2)",flexShrink:0}}>Start date:</div>
                   <input type="date" value={cutoffDate||""} disabled={openingPosted} onChange={e=>saveCutoffDate(e.target.value)}
                     style={{background: openingPosted?"var(--sc-surface-2)":"var(--sc-surface)",border:"1px solid var(--sc-border-2)",borderRadius:8,padding:"7px 12px",color:"var(--sc-text)",fontSize:13,outline:"none",cursor:openingPosted?"not-allowed":"text"}}/>
-                  {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}>🔒 locked — starting balances saved, so your reports stay consistent</span>}
+                  {openingPosted && <span style={{fontSize:12,color:"var(--sc-text-2)"}}><Icon name="lock" size={14} style={{ marginRight: 4 }} />locked — starting balances saved, so your reports stay consistent</span>}
                   {/* ── §12's DEFERRED ESCAPE HATCH, NOW REACHABLE ────────────────────────
                       The lock is right: the whole starting position is one entry dated at
                       this date, and moving it afterwards would silently re-date every

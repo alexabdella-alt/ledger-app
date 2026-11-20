@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import PayFromSelect, { usePayFromOptions } from "../PayFromSelect";
 import { payFromByKey, payFromForMethod } from "../../lib/payFrom";
 import NextStep from "../NextStep";
@@ -120,7 +121,7 @@ export default function ApView() {
       {active==="unpaid" && (
         !companyDataLoaded && unpaid.length===0 ? <LoadingList what="your bills" /> :
         unpaid.length===0
-          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>🎉</div><div style={{ fontSize:14, color:"var(--sc-text)", marginBottom:4 }}>All caught up</div>No unpaid bills. When a bill arrives, drop it on Home and it'll show up here.<div style={{ marginTop:16 }}><NextStep label="Upload a bill on Home →" onClick={()=>setView("home")} /></div></div>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}></div><div style={{ fontSize:14, color:"var(--sc-text)", marginBottom:4 }}>All caught up</div>No unpaid bills. When a bill arrives, drop it on Home and it'll show up here.<div style={{ marginTop:16 }}><NextStep label="Upload a bill on Home →" onClick={()=>setView("home")} /></div></div>
           : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {unpaid.map(inv=>{
                 const link = payLink(inv);
@@ -177,7 +178,7 @@ export default function ApView() {
       {active==="paid" && (
         !companyDataLoaded && paid.length===0 ? <LoadingList what="your bills" /> :
         paid.length===0
-          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}>💸</div>No payments recorded yet. When you mark a bill paid, it moves here.</div>
+          ? <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:48, textAlign:"center", color:"var(--sc-text-2)" }}><div style={{ fontSize:30, marginBottom:10 }}><Icon name="coins" size={30} /></div>No payments recorded yet. When you mark a bill paid, it moves here.</div>
           : <div className="sc-card" style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, overflow:"clip" }}>
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead><tr style={{ background:"var(--sc-surface-2)" }}>{["Vendor","Category","Method","Reference","Date Paid","Amount"].map(h=><th key={h} style={{ padding:"12px 18px", textAlign:h==="Amount"?"right":"left", fontSize:11, color:"var(--sc-text-2)", letterSpacing:1, fontWeight:600, borderBottom:"1px solid var(--sc-border)" }}>{h.toUpperCase()}</th>)}</tr></thead>

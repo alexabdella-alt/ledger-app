@@ -38,20 +38,22 @@ describe("C538 — Home's activity feed describes settlements", () => {
   });
   it("a collection reads as money IN from the customer", () => {
     const rows = [...INVOICES, { id: "c1", vendor: "Acme", amount: 300, date: "2026-03-20", gl_code: "1000", gl_name: "Cash", secondary_gl_code: "1100", secondary_gl_name: "Accounts Receivable", debit_credit: "debit", type: "expense", status: "booked", payment_status: "paid", description: "Collection – Acme", import_metadata: { kind: "ar_collection", payment_for: "x" } }];
-    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, invoices: rows, companyDataLoaded: true }));
-    expect(t).toMatch(/💰 Received from Acme[^🧾💰]*\+\$300\.00/);
+    const h = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat, invoices: rows, companyDataLoaded: true });
+    expect(text(h)).toMatch(/Received from Acme[^$]*\+\$300\.00/);
+    expect(h).toMatch(/data-icon="coins"(?:(?!data-icon=)[^])*Received from Acme/);   // C762 — the money-in icon (was 💰), not the receipt
   });
 });
 
 // C540 — a correction on Home's feed is not income: the fixture's reversal of the Bluebonnet bill
 // read 💰 "Bluebonnet Linen Service — Linen & Laundry +$145.00".
 describe("C540 — a correction is labelled as one", () => {
-  it("reads '↩ Corrected: Bluebonnet Linen Service'", () => {
+  it("reads 'Corrected: Bluebonnet Linen Service' with the correction icon (C762: was ↩ / 💰)", () => {
     const navSeat = { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS };   // C729 — the activity feed is on the accountant's Home
     expect(INVOICES.find((r) => r.id === "i10").import_metadata.reverses).toBe("i3");   // the shape under test
-    const t = text(renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true }));   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
-    expect(t).toContain("↩ Corrected: Bluebonnet Linen Service");
-    expect(t).not.toMatch(/💰 Bluebonnet/);
+    const h = renderViewHtml(DashboardView, { ...POPULATED, ...VIEW_CONTEXT["DashboardView.jsx"], navSeat: { seat: "reviewer", isReviewerSeat: true, sections: [], viewIds: ALL_VIEW_IDS }, companyDataLoaded: true });   // C639 — the owner's Home lists the latest 5; these older entries are on the full feed, worded identically
+    expect(text(h)).toContain("Corrected: Bluebonnet Linen Service");
+    expect(h).toMatch(/data-icon="return"(?:(?!data-icon=)[^])*Corrected: Bluebonnet/);
+    expect(h).not.toMatch(/data-icon="coins"(?:(?!data-icon=)[^])*Bluebonnet/);
   });
 });
 

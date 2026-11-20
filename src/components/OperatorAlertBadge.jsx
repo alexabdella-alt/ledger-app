@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "./Icon";
 import { loadCompleteness } from "../lib/completenessLoad";
 import { completenessSummary } from "../lib/completeness";
 
@@ -15,7 +16,7 @@ export function operatorBadgeState(result) {
   if (!result || result.loading) return null;
   if (result.failed) return { tone: "unknown", text: "Couldn't check clients", short: "Couldn't check" };
   const n = completenessSummary(result.report || []).problem;
-  return n > 0 ? { tone: "problem", text: `⚠ ${n} client${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you`, short: `⚠ ${n}` } : null;
+  return n > 0 ? { tone: "problem", text: `${n} client${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} you`, short: `${n}` } : null;
 }
 
 export default function OperatorAlertBadge({ supabase, onOpen }) {
@@ -37,8 +38,8 @@ export default function OperatorAlertBadge({ supabase, onOpen }) {
         background: red ? "var(--sc-error-soft)" : "transparent", color: red ? "var(--sc-error)" : "var(--sc-text-mut)",
         border: `1px solid ${red ? "var(--sc-error)" : "var(--sc-border)"}` }}>
       {/* ★ C746 — on a phone the full sentence doesn't fit the top bar; the count does. It used to be
-          hidden there entirely (found on the live app at 674px: "⚠ 7 clients need you", invisible). */}
-      <span className="sc-hide-narrow">{badge.text}</span><span className="sc-show-narrow">{badge.short}</span>
+          hidden there entirely (found on the live app at 674px: "7 clients need you", invisible). */}
+      {badge.tone === "problem" && <Icon name="alert" size={15} style={{ marginRight: 5 }} />}<span className="sc-hide-narrow">{badge.text}</span><span className="sc-show-narrow">{badge.short}</span>
     </button>
   );
 }

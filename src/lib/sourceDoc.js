@@ -11,7 +11,7 @@
 // be linked to either, so both are checked (the rule the panel has always used).
 // ═════════════════════════════════════════════════════════════════════════════
 
-export const RECEIPT_MARK = "📎";
+export const RECEIPT_MARK = "paperclip";   // C762 — an icon name (components/Icon.jsx), not an emoji
 export const RECEIPT_MARK_LABEL = "Receipt saved — open to see it";
 
 // Every id some document is linked to, as strings.
@@ -42,7 +42,7 @@ export function hasSourceDoc(inv, linkedIds) {
 // first (the Home button's behaviour); the file button covers a PDF, a screenshot or a computer.
 export const RECEIPT_ADD_COPY = {
   none: "No receipt or bill saved for this yet.",
-  camera: "📷 Take a photo",
+  camera: "Take a photo",
   file: "↑ Add a file",
   busy: "Saving…",
   saved: "Saved ✓ — it's attached to this entry",

@@ -3,10 +3,11 @@ import { createPortal } from "react-dom";
 import { useERP } from "./ERPContext";
 import { fmtDate } from "../lib/format";
 import { docTypeLabel } from "../lib/plainLabels";
+import Icon, { docIconName } from "./Icon";
 
 export const isImageDoc = m => (m || "").startsWith("image");
 export const isPdfDoc = m => m === "application/pdf";
-export const docIcon = t => t === "invoice" ? "🧾" : t === "contract" ? "📄" : t === "bank_statement" ? "🏦" : t === "payroll" ? "💼" : "📋";
+export const docIcon = (t, mediaType = "") => docIconName(t, mediaType);   // C762 — an icon NAME for <Icon />, never an emoji
 export const docHasFile = d => !!(d && (d.base64 || d.storage_path));
 
 // Full-screen document preview modal, shared by the Documents tab and the
@@ -71,7 +72,7 @@ export default function DocumentPreviewModal({ doc, onClose }) {
           )}
           {!docHasFile(doc) && !previewLoading && (
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24 }}>
-              <div style={{ fontSize: 52, opacity: 0.45 }}>{docIcon(doc.type)}</div>
+              <div style={{ opacity: 0.45 }}><Icon name={docIcon(doc.type, doc.mediaType)} size={52} strokeWidth={1.4} /></div>
               <div style={{ fontSize: 13, color: "var(--sc-text-2)", textAlign: "center", maxWidth: 460, lineHeight: 1.55, background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 10, padding: "14px 18px" }}>
                 This document was uploaded before file storage was enabled. Re-upload to enable full preview.
               </div>

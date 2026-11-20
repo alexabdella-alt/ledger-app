@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "./Icon";
 import { useERP } from "./ERPContext";
 import { fmtDate , fmtSignedMoney, todayLocal } from "../lib/format";
 import { callAIProxy } from "../lib/ai";
@@ -633,7 +634,7 @@ function ClarificationCard({ item }) {
   });
   const thumb = () => {
     if (item.thumb) return <img src={item.thumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />;
-    const glyph = (item.mediaType || "").includes("pdf") ? "📄" : inv.type === "revenue" ? "🧾" : "🧾";
+    const glyph = (item.mediaType || "").includes("pdf") ? "" : inv.type === "revenue" ? "" : "";
     return <div style={{ fontSize: 26 }}>{glyph}</div>;
   };
 

@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { owedAccount, openingGapExplainedCount } from "../../lib/reconcile";
 import { pendingStatementStashes, STASH_WAITING_COPY, STASH_PICKUP_LABEL } from "../../lib/statementLifecycle";
 import { fetchStashRows } from "../../lib/documentIntake";
@@ -217,7 +218,7 @@ export default function BankView() {
                 return (
                   <div style={{ border:"1px solid var(--sc-gold)", background:"var(--sc-gold-soft)", borderRadius:16, padding:"20px 22px", marginBottom:24 }}>
                     <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                      <span style={{ fontSize:22, flexShrink:0 }}>🏦</span>
+                      <span style={{ fontSize:22, flexShrink:0 }}><Icon name="bank" size={22} /></span>
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:15, fontWeight:700, color:"var(--sc-text)", marginBottom:4 }}>Starting balance from your statement</div>
                         <div style={{ fontSize:13.5, color:"var(--sc-text)", lineHeight:1.5 }}>{copy}</div>
@@ -253,7 +254,7 @@ export default function BankView() {
               {/* C196(2) — a surface may only WARN about what the system cannot explain. Reconcile
                   got this gate in C195 item 8; Bank Import (the surface the client lands on first)
                   did not, so a fully chain-explained gap still read as an alarm. Consult the known
-                  uncashed items: explained → calm ✓, no ⚠, no Dismiss (there is nothing to dismiss).
+                  uncashed items: explained → calm ✓, no warning sign, no Dismiss (there is nothing to dismiss).
                   Only a genuinely unexplained gap keeps the warning. */}
               {openingDiscrepancyFlag && (() => {
                 const cands = priorOutstandingCandidates({
@@ -271,7 +272,7 @@ export default function BankView() {
                 return (
                 <div style={{ border:"1px solid var(--sc-warning)", background:"var(--sc-warning-soft)", borderRadius:16, padding:"18px 22px", marginBottom:24 }}>
                   <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                    <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
+                    <span style={{ fontSize:20, flexShrink:0 }}><Icon name="alert" size={20} /></span>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:14.5, fontWeight:700, color:"var(--sc-text)", marginBottom:4 }}>This statement's starting balance doesn't match your books</div>
                       <div style={{ fontSize:13, color:"var(--sc-text)", lineHeight:1.5 }}>
@@ -293,7 +294,7 @@ export default function BankView() {
                 {accountPicker}
                 {pendingBankFile && (
                   <div style={{ border:"2px solid var(--sc-gold)", borderRadius:16, padding:"28px 32px", background:"var(--sc-gold-soft)", marginBottom:24 }}>
-                    <div style={{ fontSize:32, marginBottom:10 }}>🏦</div>
+                    <div style={{ fontSize:32, marginBottom:10 }}><Icon name="bank" size={32} /></div>
                     <div style={{ fontSize:16, fontWeight:600, marginBottom:6 }}>Ready to import: {pendingBankFile.name}</div>
                     <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:18 }}>
                       Confirm the account above — charges offset to {importAccount?.type==="credit_card" ? "your credit card (liability 2200)" : "cash (1000)"} — then import.
@@ -338,7 +339,7 @@ export default function BankView() {
                   onDrop={e=>{e.preventDefault();setBankDragOver(false);handleBankFile(e.dataTransfer.files[0], importAccount);}}
                   onClick={()=>document.getElementById("bank-upload").click()}
                   style={{ border:`2px dashed ${bankDragOver?"var(--sc-gold)":"var(--sc-border-2)"}`, borderRadius:16, padding:"52px 32px", textAlign:"center", cursor:"pointer", background:bankDragOver?"var(--sc-gold-soft)":"var(--sc-surface)", transition:"all 0.2s", marginBottom:24 }}>
-                  <div style={{ fontSize:40, marginBottom:14 }}>🏦</div>
+                  <div style={{ fontSize:40, marginBottom:14 }}><Icon name="bank" size={40} /></div>
                   <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop your bank statement here</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:16 }}>CSV · Excel (.xlsx) · PDF — from any bank</div>
                   <div style={{ display:"flex", justifyContent:"center", gap:10 }}>
@@ -426,7 +427,7 @@ export default function BankView() {
                   {reviewBuckets.needsReview.length > 0 && (
                     <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:20, marginBottom:20 }}>
                       <div style={{ fontSize:12, color:"var(--sc-warning)", marginBottom:16, display:"flex", alignItems:"center", gap:8 }}>
-                        <span>⚠</span> <span>These transactions need your input — AI wasn't confident enough to auto-categorize</span>
+                        <span><Icon name="alert" size={18} /></span> <span>These transactions need your input — AI wasn't confident enough to auto-categorize</span>
                       </div>
                       {reviewBuckets.needsReview.map(t=>(
                         <div key={t.id} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", borderRadius:10, padding:"14px 16px", marginBottom:10 }}>
@@ -487,7 +488,7 @@ export default function BankView() {
                                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                                   <div style={{ width:26, height:26, borderRadius:6, background:vendorColor(t.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"var(--sc-on-accent)", flexShrink:0 }}>{initials(t.vendor)}</div>
                                   <span style={{ fontSize:13, fontWeight:500 }}>{t.vendor}</span>
-                                  {t.rule_applied && <span style={{ fontSize:10, color:"var(--sc-gold)", background:"var(--sc-border)", borderRadius:10, padding:"1px 6px" }}>⚡rule</span>}
+                                  {t.rule_applied && <span style={{ fontSize:10, color:"var(--sc-gold)", background:"var(--sc-border)", borderRadius:10, padding:"1px 6px" }}><Icon name="zap" size={14} style={{ marginRight: 4 }} />rule</span>}
                                 </div>
                               </td>
                               <td style={{ padding:"11px 14px", fontSize:12, color:"var(--sc-text-2)" }}>{fmtDate(t.date)}</td>

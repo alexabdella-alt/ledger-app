@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import MonthStatus from "./MonthStatus";   // C740 — the owner's months replace the books panel here
 import { reportTabsFor, ownerReportTabs, REPORT_GUIDE, REPORTS_PURPOSE, BASIS_LABELS, BASIS_EXPLAINER } from "../../lib/reportGuide";
 import { reminderMailto } from "../../lib/invoiceReminder";
@@ -598,7 +599,7 @@ export default function ReportsView() {
                               <div style={{fontSize:11,color:"var(--sc-text-2)",marginTop:3}}>As of {new Date(asOf+"T12:00:00").toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"})}</div>
                             </div>
                             <div style={{display:"flex",alignItems:"center",gap:10}}>
-                              {!isBalanced && <div style={{fontSize:11,color:"var(--sc-warning)",background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"4px 10px"}}>⚠ Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
+                              {!isBalanced && <div style={{fontSize:11,color:"var(--sc-warning)",background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"4px 10px"}}><Icon name="alert" size={14} style={{ marginRight: 4 }} />Out of balance by {bsFmt(Math.abs(totalAssets-totalLiabEquity))}</div>}
                               {isBalanced && <div style={{fontSize:11,color:"var(--sc-success)",background:"var(--sc-success-soft)",border:"1px solid var(--sc-success-soft)",borderRadius:8,padding:"4px 10px"}}>{ownerSeat ? "✓ Adds up" : "✓ Balanced"}</div>}
                             </div>
                           </div>
@@ -664,8 +665,8 @@ export default function ReportsView() {
                             {openingBalances.length===0 && (
                               <div style={{marginTop:16,background:"var(--sc-warning-soft)",border:"1px solid var(--sc-warning-soft)",borderRadius:8,padding:"12px 16px",fontSize:12,color:"var(--sc-warning)"}}>
                                 {ownerSeat
-                                  ? "⚠ Your starting balances aren't set yet, so this can't show everything. Add them in Settings → More settings → Starting balances."
-                                  : "⚠ No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet."}
+                                  ? "Your starting balances aren't set yet, so this can't show everything. Add them in Settings → More settings → Starting balances."
+                                  : "No opening balances set. Go to Settings → Opening Balances to enter your starting balances for an accurate balance sheet."}
                               </div>
                             )}
                           </div>
@@ -934,7 +935,7 @@ export default function ReportsView() {
                             <button onClick={exportCsv} style={csvBtn}>↓ Export CSV</button>
                           </div>
                           <div style={{ background: tb.balanced?"var(--sc-success-soft)":"var(--sc-error-soft)", border:`1px solid ${tb.balanced?"var(--sc-success-soft)":"var(--sc-error-soft)"}`, borderRadius:10, padding:"12px 16px", marginBottom:14, fontSize:13, fontWeight:600, color: tb.balanced?"var(--sc-success)":"var(--sc-error)" }}>
-                            {tb.balanced ? "✓ Books are in balance" : `⚠ Books are out of balance by ${fmt(tb.difference)}`}
+                            {tb.balanced ? "✓ Books are in balance" : `Books are out of balance by ${fmt(tb.difference)}`}
                           </div>
                           <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:12, overflow:"clip" }}>
                             <table style={{ width:"100%", borderCollapse:"collapse" }}>

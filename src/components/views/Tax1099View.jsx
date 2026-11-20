@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { initials, vendorColor , fmtMoney } from "../../lib/format";
@@ -118,7 +119,7 @@ export default function Tax1099View() {
       {/* January due banner */}
       {(month===0 || month===11) && needs.length>0 && (
         <div style={{ ...card, padding:"14px 18px", marginBottom:16, background:"var(--sc-warning-soft)", borderColor:"var(--sc-warning-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-warning)" }}>⏰ 1099s are due January 31st — you have {needs.length} vendor{needs.length!==1?"s":""} who need one.</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--sc-warning)" }}><Icon name="clock" size={14} style={{ marginRight: 4 }} />1099s are due January 31st — you have {needs.length} vendor{needs.length!==1?"s":""} who need one.</div>
           <button onClick={()=>exportCSV()} style={{ padding:"8px 16px", borderRadius:9, background:"var(--sc-warning)", border:"none", color:"var(--sc-on-accent)", fontSize:13, fontWeight:600, cursor:"pointer" }}>Export 1099 data →</button>
         </div>
       )}

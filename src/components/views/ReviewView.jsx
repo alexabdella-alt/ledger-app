@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
 import { waitingOnYou, waitingCopy } from "../../lib/waitingOnYou";
@@ -256,7 +257,7 @@ export default function ReviewView() {
              CPA to resolve. Counts toward the queue but does NOT change sign-off gating. ── */}
       {statementException.length > 0 && (
         <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>📄 {(() => { const ready = statementException.filter(i => i.state === "ready").length; const stuck = statementException.length - ready;
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}><Icon name="document" size={14} style={{ marginRight: 4 }} />{(() => { const ready = statementException.filter(i => i.state === "ready").length; const stuck = statementException.length - ready;
                 return [stuck ? `${stuck} statement ${stuck === 1 ? "item" : "items"} the pipeline couldn't finish` : "", ready ? `${ready} ready to check against the bank` : ""].filter(Boolean).join(" · "); })()}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {statementException.map((x) => (
@@ -323,7 +324,7 @@ export default function ReviewView() {
              fixed condition); the reviewer's one verb is dismiss-with-reason. ── */}
       {anomaly.length > 0 && (
         <div style={{ border: "1px solid var(--sc-warning)", background: "var(--sc-warning-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}>⚠ {anomaly.length} unusual {anomaly.length === 1 ? "pattern" : "patterns"} detected · awaiting review</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-warning)", marginBottom: 10 }}><Icon name="alert" size={14} style={{ marginRight: 4 }} />{anomaly.length} unusual {anomaly.length === 1 ? "pattern" : "patterns"} detected · awaiting review</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {anomaly.map((a) => {
               const sevColor = a.severity === "high" ? "var(--sc-error)" : a.severity === "medium" ? "var(--sc-warning)" : "var(--sc-text-2)";
@@ -487,7 +488,7 @@ export default function ReviewView() {
       {/* ── ACCURACY (O59 THIRD NET) — control totals that should tie and don't ── */}
       {accuracy.length > 0 && (
         <div style={{ border: "1px solid var(--sc-error)", background: "var(--sc-error-soft)", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-error)", marginBottom: 8 }}>⚠ {accuracy.length} figure{accuracy.length === 1 ? "" : "s"} that should match but don't</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-error)", marginBottom: 8 }}><Icon name="alert" size={14} style={{ marginRight: 4 }} />{accuracy.length} figure{accuracy.length === 1 ? "" : "s"} that should match but don't</div>
           {accuracy.map((f, i) => (
             <div key={f.key || i} style={{ fontSize: 13, color: "var(--sc-text)", marginBottom: i < accuracy.length - 1 ? 8 : 0 }}>
               <div style={{ fontWeight: 600 }}>{f.title}</div>
@@ -504,11 +505,11 @@ export default function ReviewView() {
       {/* COMPLETENESS — O60 dropped/stuck/errored intake docs */}
       {completeness.length > 0 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", margin: "8px 0 10px" }}>📥 Incomplete documents <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}>· arrived but didn't fully record ({completeness.length})</span></div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", margin: "8px 0 10px" }}><Icon name="inbox" size={14} style={{ marginRight: 4 }} />Incomplete documents <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}>· arrived but didn't fully record ({completeness.length})</span></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {completeness.map(d => (
               <div key={d.id} style={{ background: "var(--sc-surface)", border: "1px solid var(--sc-border)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--sc-warning-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⚠</div>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--sc-warning-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}><Icon name="alert" size={18} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.filename || "document"}</div>
                   <div style={{ fontSize: 12, color: "var(--sc-text-2)", marginTop: 2 }}>
@@ -544,7 +545,7 @@ export default function ReviewView() {
       {/* NEEDS REVIEW — O49 low-confidence-and-material txns */}
       {needsReview.length > 0 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", margin: "14px 0 10px" }}>🔎 Needs your review <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}>· the AI wasn't sure ({needsReview.length})</span></div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--sc-text)", margin: "14px 0 10px" }}><Icon name="search" size={14} style={{ marginRight: 4 }} />Needs your review <span style={{ color: "var(--sc-text-2)", fontWeight: 500 }}>· the AI wasn't sure ({needsReview.length})</span></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {needsReview.map(t => {
               const tone = t.severity === "high" ? "var(--sc-error)" : "var(--sc-warning)";
@@ -583,7 +584,7 @@ export default function ReviewView() {
                         <button onClick={() => { setOverrideFor(null); setOverrideCode(""); }} style={{ padding: "8px 12px", borderRadius: 9, fontSize: 13, background: "transparent", border: "1px solid var(--sc-border-2)", color: "var(--sc-text-2)", cursor: "pointer" }}>Cancel</button>
                       </>
                     )}
-                    {!isOv && <button disabled={busyId === t.id} onClick={() => onAskClient(t)} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}>💬 Ask the client</button>}
+                    {!isOv && <button disabled={busyId === t.id} onClick={() => onAskClient(t)} style={{ padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: "var(--sc-gold-soft)", border: "1px solid var(--sc-gold-soft)", color: "var(--sc-gold)", cursor: "pointer" }}><Icon name="chat" size={14} style={{ marginRight: 4 }} />Ask the client</button>}
                     <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--sc-text-2)" }}>Leave it to decide later — it stays here.</span>
                   </div>
 
@@ -749,7 +750,7 @@ export default function ReviewView() {
                    screen whose whole job is to be trustworthy. The claim made here is about
                    the QUERY, never about the books. */
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, padding:48, textAlign:"center" }}>
-                  <div style={{ fontSize:32, marginBottom:12 }}>⚠</div>
+                  <div style={{ fontSize:32, marginBottom:12 }}><Icon name="alert" size={32} /></div>
                   <div style={{ fontSize:16, fontWeight:600, marginBottom:8, color:"var(--sc-warning)" }}>We couldn't finish checking just now</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", maxWidth:420, margin:"0 auto" }}>This isn't a problem with your books — one of our checks didn't finish, so we're not going to tell you everything's clear when we can't confirm it. Try again in a moment.</div>
                   <button onClick={refreshDropped} style={{ marginTop:16, padding:"8px 16px", borderRadius:8, fontSize:13, fontWeight:600, background:"var(--sc-surface-2)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer" }}>Try again</button>
@@ -765,7 +766,7 @@ export default function ReviewView() {
                   {summaryAndSections}
                   {unknown.length > 0 && (
                   <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:"var(--sc-text)", margin:"6px 0 0" }}>📄 Unclassified documents <span style={{ color:"var(--sc-text-2)", fontWeight:500 }}>· awaiting a decision ({unknown.length})</span></div>
+                  <div style={{ fontSize:13, fontWeight:700, color:"var(--sc-text)", margin:"6px 0 0" }}><Icon name="document" size={14} style={{ marginRight: 4 }} />Unclassified documents <span style={{ color:"var(--sc-text-2)", fontWeight:500 }}>· awaiting a decision ({unknown.length})</span></div>
                   {unknownDocs.filter(d=>!d.posted).map(doc => {
                     const fmt = fmtSignedMoney;
                     const totalDebits = (doc.journal_entry?.lines||[]).reduce((s,l)=>s+(l.debit||0),0);
@@ -842,7 +843,7 @@ export default function ReviewView() {
                         {/* Header */}
                         <div style={{ padding:"18px 20px", display:"flex", alignItems:"flex-start", gap:14 }}>
                           <div style={{ width:44, height:44, borderRadius:11, background:doc.posted?"#D1FAE522":doc.entry_needed?"var(--sc-surface-2)":"var(--sc-surface)", border:`1px solid ${doc.posted?"var(--sc-success-soft)":doc.entry_needed?"var(--sc-gold-soft)":"var(--sc-border-2)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
-                            {doc.posted ? "✓" : doc.entry_needed ? "📋" : "📄"}
+                            {doc.posted ? "✓" : <Icon name={doc.entry_needed ? "clipboard" : "document"} size={16} />}
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
@@ -900,7 +901,7 @@ export default function ReviewView() {
                               <div style={{ marginTop:14 }}>
                                 {doc.watch_matches.map((match, mi) => (
                                   <div key={mi} style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:10, padding:"12px 16px", marginBottom:8 }}>
-                                    <div style={{ fontSize:11, color:"var(--sc-warning)", letterSpacing:1.2, marginBottom:6 }}>🔔 WATCH TRIGGERED</div>
+                                    <div style={{ fontSize:11, color:"var(--sc-warning)", letterSpacing:1.2, marginBottom:6 }}><Icon name="bell" size={14} style={{ marginRight: 4 }} />WATCH TRIGGERED</div>
                                     <div style={{ fontSize:13, color:"var(--sc-text)", marginBottom:6, fontWeight:500 }}>{match.trigger_description}</div>
                                     <div style={{ fontSize:12, color:"var(--sc-text-2)", marginBottom:10 }}>
                                       Matched: <strong style={{ color:"var(--sc-text)" }}>{match.vendor}</strong> · {fmt(match.amount)} · {fmtDate(match.date)}
@@ -953,7 +954,7 @@ export default function ReviewView() {
                             {/* Watching for — active conditions */}
                             {!doc.posted && (doc.watch_for||[]).length > 0 && (
                               <div style={{ marginTop:14, background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:10, padding:"12px 16px" }}>
-                                <div style={{ fontSize:10, color:"var(--sc-success)", letterSpacing:1.5, marginBottom:8 }}>👁 WATCHING FOR</div>
+                                <div style={{ fontSize:10, color:"var(--sc-success)", letterSpacing:1.5, marginBottom:8 }}><Icon name="eye" size={14} style={{ marginRight: 4 }} />WATCHING FOR</div>
                                 {doc.watch_for.map((w, wi) => (
                                   <div key={wi} style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom: wi < doc.watch_for.length-1 ? 10 : 0 }}>
                                     <div style={{ width:5, height:5, borderRadius:"50%", background:"var(--sc-success)", marginTop:6, flexShrink:0 }} />

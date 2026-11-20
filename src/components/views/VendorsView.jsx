@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
@@ -333,7 +334,7 @@ export default function VendorsView() {
 
                     {filteredVendors.length===0 ? (
                       <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:40, textAlign:"center" }}>
-                        <div style={{ fontSize:28, marginBottom:10 }}>🔍</div>
+                        <div style={{ fontSize:28, marginBottom:10 }}><Icon name="search" size={28} /></div>
                         <div style={{ fontSize:15, fontWeight:500, marginBottom:6 }}>No vendors match “{vendorSearch}”</div>
                         <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:18 }}>Try a shorter or different term — search covers name, email, phone, website, notes, and tags.</div>
                         <button onClick={()=>setVendorSearch("")} style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border-2)", color:"var(--sc-text-2)", borderRadius:8, height:36, padding:"0 16px", fontSize:14, fontWeight:500, cursor:"pointer" }}>Clear search</button>
@@ -357,15 +358,15 @@ export default function VendorsView() {
                               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                                 <span style={{ fontSize:15, fontWeight:600 }}>{v.name}</span>
                                 {v.fromContact && <span style={{ fontSize:10, background:"var(--sc-surface-2)", color:"var(--sc-gold)", borderRadius:20, padding:"2px 7px" }}>Contact</span>}
-                                {rule && <span style={{ fontSize:10, background:"var(--sc-surface-2)", color:"var(--sc-gold)", borderRadius:20, padding:"2px 7px" }}>⚡ {rule.gl_name}</span>}
+                                {rule && <span style={{ fontSize:10, background:"var(--sc-surface-2)", color:"var(--sc-gold)", borderRadius:20, padding:"2px 7px" }}><Icon name="zap" size={14} style={{ marginRight: 4 }} />{rule.gl_name}</span>}
                                 {(() => { const b = badge1099(v); return b && <span style={{ fontSize:10, background:b.tone+"18", color:b.tone, borderRadius:20, padding:"2px 7px", border:`1px solid ${b.tone}44` }}>{b.text}</span>; })()}
                                 {v.payment_terms && <span style={{ fontSize:10, background:"var(--sc-surface-2)", color:"var(--sc-text-2)", borderRadius:20, padding:"2px 7px", border:"1px solid var(--sc-border-2)" }}>{v.payment_terms}</span>}
                                 {(v.tags||[]).map(t=><span key={t} style={{ fontSize:10, background:"var(--sc-border)", color:"var(--sc-text-2)", borderRadius:20, padding:"2px 7px" }}>{t}</span>)}
                               </div>
                               <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:3 }}>
                                 {vCount>0 ? `${vCount} transaction${vCount!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No transactions yet"}
-                                {v.email && <span style={{ marginLeft:10 }}>✉ {v.email}</span>}
-                                {v.phone && <span style={{ marginLeft:10 }}>📞 {v.phone}</span>}
+                                {v.email && <span style={{ marginLeft:10 }}><Icon name="mail" size={14} style={{ marginRight: 4 }} />{v.email}</span>}
+                                {v.phone && <span style={{ marginLeft:10 }}><Icon name="phone" size={14} style={{ marginRight: 4 }} />{v.phone}</span>}
                               </div>
                             </div>
                             <div className="sc-rowcard-end" style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
@@ -439,7 +440,7 @@ export default function VendorsView() {
 
                           {/* Notes display */}
                           {!isEditing && v.notes && (
-                            <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}>📝 {v.notes}</div>
+                            <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}><Icon name="note" size={14} style={{ marginRight: 4 }} />{v.notes}</div>
                           )}
                           {!isEditing && (v.min_expected||v.max_expected) && (
                             <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}>

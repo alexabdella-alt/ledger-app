@@ -20,7 +20,7 @@ export function composeAssistantReply({ reply, actionFailures = [], actionSummar
     // explained wrongly.
     const reason = actionFailures.map((f) => (f && f.reason) || "").find(Boolean);
     const tail = reason ? ` ${reason}` : " Nothing else changed.";
-    return `⚠️ That didn't go through — I couldn't save ${failed}, so ${actionFailures.length === 1 ? "it wasn't" : "those weren't"} changed.${applied}${tail}`;
+    return `That didn't go through — I couldn't save ${failed}, so ${actionFailures.length === 1 ? "it wasn't" : "those weren't"} changed.${applied}${tail}`;
   }
   return reply || "Done!";
 }

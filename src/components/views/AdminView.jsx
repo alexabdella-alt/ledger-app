@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { completenessSummary, monthName } from "../../lib/completeness";
 import { loadCompleteness } from "../../lib/completenessLoad";
 import { createPortal } from "react-dom";
@@ -47,7 +48,7 @@ export default function AdminView() {
   return (
     <div>
       <div style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ width: 34, height: 34, borderRadius: 9, background: A.amber, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>⚙</div>
+        <div style={{ width: 34, height: 34, borderRadius: 9, background: A.amber, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}><Icon name="gear" size={17} /></div>
         <div>
           <div style={{ fontSize: 10, letterSpacing: 3, color: A.amber, marginBottom: 4, fontWeight: 600 }}>PLATFORM ADMIN</div>
           <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0, letterSpacing: -0.5 }}>Operations</h1>
@@ -152,7 +153,7 @@ export function CompletenessTab({ supabase, enterSupport, initial = null }) {
                 <React.Fragment key={r.companyId}>
                   <tr data-completeness-row={r.status} onClick={() => setOpen(open === r.companyId ? null : r.companyId)} style={{ cursor: r.items.length ? "pointer" : "default", borderTop: "1px solid var(--sc-surface-2)" }}>
                     <td style={{ padding: "9px 10px", fontSize: 13, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap" }}>{r.name}</td>
-                    {r.months.map((m) => { const cell = m.locked && m.status === "complete" ? { ...CELL.complete, t: "🔒", label: "Complete and closed" } : CELL[m.status]; return (   // C740 — a closed month
+                    {r.months.map((m) => { const cell = m.locked && m.status === "complete" ? { ...CELL.complete, t: "✓", label: "Complete and closed" } : CELL[m.status]; return (   // C740 — a closed month
                       <td key={m.period} title={`${monthName(m.period)} — ${cell.label}`} style={{ padding: "6px 4px", textAlign: "center" }}>
                         <span style={{ display: "inline-flex", width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: cell.c, background: cell.bg }}>{cell.t}</span>
                       </td>
@@ -325,7 +326,7 @@ function ProblemsTab({ rpc, enterSupport }) {
     <>
       {/* Booking-visibility failures — a saved entry that didn't show up in the ledger. */}
       <Card accent={vis && vis.length ? A.red : A.green} title="Booking visibility failures (30d)">
-        {vis === null ? <Loading /> : vis.length === 0 ? <Empty>No booking-visibility failures in the last 30 days 🎉</Empty> : (
+        {vis === null ? <Loading /> : vis.length === 0 ? <Empty>No booking-visibility failures in the last 30 days</Empty> : (
           <>
             <div style={{ padding: "12px 18px", display: "flex", alignItems: "baseline", gap: 10, borderBottom: "1px solid var(--sc-surface-2)" }}>
               <span style={{ fontSize: 30, fontWeight: 700, color: A.red, fontFamily: "'DM Mono',monospace" }}>{vis.length}</span>
@@ -352,7 +353,7 @@ function ProblemsTab({ rpc, enterSupport }) {
             <button key={d} onClick={() => setDays(d)} style={{ padding: "4px 11px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", background: days === d ? A.amber : "var(--sc-surface)", color: days === d ? "var(--sc-surface)" : "var(--sc-text-2)", border: `1px solid ${days === d ? A.amber : "var(--sc-border-2)"}` }}>{l}</button>
           ))}
         </div>}>
-        {!failed ? <Loading /> : failed.length === 0 ? <Empty>No failed uploads in this window 🎉</Empty> : (
+        {!failed ? <Loading /> : failed.length === 0 ? <Empty>No failed uploads in this window</Empty> : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead><tr style={{ background: "var(--sc-bg)" }}><Th>Company</Th><Th>File</Th><Th>Error</Th><Th>When</Th><Th></Th></tr></thead>
             <tbody>{failed.map(f => (

@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { useERP } from "../ERPContext";
@@ -30,7 +31,7 @@ export default function RulesView() {
               {teachOpen && <VendorTeachIn onClose={()=>setTeachOpen(false)} />}
               {loadFailures?.vendor_rules ? <LoadFailedNotice what="vendor rules" table="vendor_rules" /> : !companyDataLoaded ? <LoadingList what="your rules" /> : rules.length===0 ? (
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:14, padding:40, textAlign:"center" }}>
-                  <div style={{ fontSize:32, marginBottom:12 }}>⚡</div>
+                  <div style={{ fontSize:32, marginBottom:12 }}><Icon name="zap" size={32} /></div>
                   <div style={{ fontSize:15, fontWeight:500, marginBottom:8 }}>No rules yet</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:20 }}>Tell the assistant things like "Always put FedEx invoices under Shipping & Fulfillment"</div>
                   <button onClick={()=>setChatOpen(true)} style={{ background:"linear-gradient(135deg,var(--sc-gold),var(--sc-gold))", border:"none", color:"var(--sc-on-accent)", borderRadius:10, padding:"10px 24px", fontSize:13, cursor:"pointer" }}>Open AI Assistant</button>

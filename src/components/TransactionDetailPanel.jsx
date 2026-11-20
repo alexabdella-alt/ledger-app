@@ -18,6 +18,7 @@ import { classifyBankReason } from "../lib/bankMatch";
 import { clearedOriginal, clearingSettlement } from "../lib/settlementLink";
 import { reversalIndex, reversalFor } from "../lib/ledger";
 import DocumentPreviewModal, { docIcon, isImageDoc } from "./DocumentPreviewModal";
+import Icon from "./Icon";
 import PayFromSelect, { usePayFromOptions } from "./PayFromSelect";
 import ReceivedIntoSelect, { useReceivedIntoOptions } from "./ReceivedIntoSelect";
 import { payFromByKey } from "../lib/payFrom";
@@ -82,7 +83,7 @@ function SourceDocPreview({ doc, onExpand }) {
   return (
     <div style={{ border: "1px solid var(--sc-border)", borderRadius: 10, overflow: "hidden", background: "var(--sc-surface)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderBottom: "1px solid var(--sc-surface-2)" }}>
-        <span style={{ fontSize: 18, flexShrink: 0 }}>{isPdf ? "📄" : isImg ? "🖼" : docIcon(doc.type)}</span>
+        <span style={{ flexShrink: 0, color: "var(--sc-text-2)", display: "inline-flex" }}><Icon name={isPdf ? "document" : isImg ? "image" : docIcon(doc.type)} size={18} /></span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
           <div style={{ fontSize: 11, color: "var(--sc-text-2)", marginTop: 1 }}>{doc.uploaded_at ? fmtDate(doc.uploaded_at) : ""}{doc.mediaType ? ` · ${fileKindWord(doc.mediaType)}` : ""}</div>
@@ -103,7 +104,7 @@ function SourceDocPreview({ doc, onExpand }) {
         )}
         {!loading && !canPreview && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 16, textAlign: "center" }}>
-            <div style={{ fontSize: 40, opacity: 0.4 }}>{docIcon(doc.type)}</div>
+            <div style={{ opacity: 0.4 }}><Icon name={docIcon(doc.type, doc.mediaType)} size={40} strokeWidth={1.4} /></div>
             <div style={{ fontSize: 12, color: "var(--sc-text-2)", maxWidth: 320, lineHeight: 1.5 }}>
               {url ? "Inline preview isn't available for this file type." : "This document was uploaded before file storage was enabled. Re-upload to enable preview."}
             </div>
@@ -182,7 +183,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
 
   const close = () => { setRecodeOpen(false); setPayOpen(false); onClose(); };
 
-  const findSourceDoc = (inv) => sourceDocFor(inv, docLibrary);   // C750 — the same rule the list's 📎 uses
+  const findSourceDoc = (inv) => sourceDocFor(inv, docLibrary);   // C750 — the same rule the list's paperclip uses
   const handleSourceUpload = async (file, inv) => {
     if (!file || !inv) return;
     // ★ C750 — the same treatment as a photo dropped on Home (C736): a big phone photo or an iPhone
@@ -345,7 +346,7 @@ export default function TransactionDetailPanel({ invoiceId, onClose, returnConte
                           {isViewer ? null : (
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                               {/* ★ C750 — on a phone, the camera opens straight away (the Home button's behaviour, C736) */}
-                              <button data-src-camera className="sc-phone-only" onClick={() => srcCameraRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? RECEIPT_ADD_COPY.busy : RECEIPT_ADD_COPY.camera}</button>
+                              <button data-src-camera className="sc-phone-only" onClick={() => srcCameraRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? RECEIPT_ADD_COPY.busy : <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="camera" size={14} />{RECEIPT_ADD_COPY.camera}</span>}</button>
                               <button data-src-file onClick={() => srcFileRef.current?.click()} disabled={srcUploading} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: srcUploading ? "var(--sc-border)" : "var(--sc-gold)", border: "none", color: srcUploading ? "var(--sc-text-mut)" : "var(--sc-on-accent)", cursor: srcUploading ? "default" : "pointer", whiteSpace: "nowrap" }}>{srcUploading ? RECEIPT_ADD_COPY.busy : RECEIPT_ADD_COPY.file}</button>
                             </div>
                           )}

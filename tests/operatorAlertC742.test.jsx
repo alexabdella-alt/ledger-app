@@ -48,8 +48,8 @@ describe("which status changes alert the operator", () => {
 describe("the operator's top-bar badge", () => {
   const rep = (statuses) => ({ report: statuses.map((s, i) => ({ companyId: `c${i}`, name: `Co ${i}`, status: s, items: [], months: [] })) });
   it("★ says how many clients have something missing; nothing when none do", () => {
-    expect(operatorBadgeState(rep(["problem", "problem", "complete"]))).toEqual({ tone: "problem", text: "⚠ 2 clients need you", short: "⚠ 2" });
-    expect(operatorBadgeState(rep(["problem"]))).toEqual({ tone: "problem", text: "⚠ 1 client needs you", short: "⚠ 1" });
+    expect(operatorBadgeState(rep(["problem", "problem", "complete"]))).toEqual({ tone: "problem", text: "2 clients need you", short: "2" }   /* C762 — the alert is an icon beside it */);
+    expect(operatorBadgeState(rep(["problem"]))).toEqual({ tone: "problem", text: "1 client needs you", short: "1" });
     expect(operatorBadgeState(rep(["attention", "complete"]))).toBe(null);
   });
   it("★ a check that couldn't run says so — never all-clear", () => {

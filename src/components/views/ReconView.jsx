@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { toCSV } from "../../lib/insights";
 import { useERP } from "../ERPContext";
 import { isDbId } from "../../lib/contactIds";
@@ -860,7 +861,7 @@ export default function ReconView() {
           )}
           <label style={{ display:"block", border:`1.5px dashed ${bankTxns.length>0?"var(--sc-success)":"var(--sc-border-2)"}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor: processing?"wait":"pointer", fontSize:13, color:"var(--sc-text-2)", background:bankTxns.length>0?"var(--sc-success-soft)":"var(--sc-bg)" }}>
             <input type="file" accept=".csv,.pdf" disabled={processing} style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; e.target.value=""; processFile(f); }} />
-            <div style={{ fontSize:26, marginBottom:8, opacity:0.6 }}>{processing?"⟳":bankTxns.length>0?"✓":"📄"}</div>
+            <div style={{ fontSize:26, marginBottom:8, opacity:0.6 }}>{processing?"⟳":bankTxns.length>0?"✓":""}</div>
             {processing
               ? <span style={{ color:"var(--sc-gold)", fontWeight:600 }}>Reading your statement with AI…</span>
               : bankTxns.length>0
@@ -956,7 +957,7 @@ export default function ReconView() {
       {/* O83: persistent, honest banner when autosave can't persist — never fail silently. */}
       {saveError && (
         <div style={{ ...card, padding:"12px 16px", marginBottom:14, background:"var(--sc-error-soft)", borderColor:"var(--sc-error-soft)", display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-          <div style={{ fontSize:13, color:"var(--sc-error)" }}>⚠ We couldn't save your progress. Your matches are still here — check your connection, then <strong>Save Progress</strong>.</div>
+          <div style={{ fontSize:13, color:"var(--sc-error)" }}><Icon name="alert" size={14} style={{ marginRight: 4 }} />We couldn't save your progress. Your matches are still here — check your connection, then <strong>Save Progress</strong>.</div>
           <button onClick={async()=>{ const ok = await saveNow("open"); if (ok) showNotification && showNotification("Progress saved ✓"); }} style={{ padding:"6px 12px", borderRadius:8, background:"var(--sc-surface)", border:"1px solid var(--sc-error-soft)", color:"var(--sc-error)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Retry</button>
         </div>
       )}
@@ -968,7 +969,7 @@ export default function ReconView() {
           {/* C195(8) — consult the KNOWN uncashed items first: a gap the chain already explains is a
               ✓, not an alarm (the C179 false-alarm class). Only an unexplained gap gets flagged. */}
           <div style={{ fontSize:13, color: openingExplainedCount>0 ? "var(--sc-success)" : "var(--sc-warning)" }}>
-            {openingExplainedCount>0 ? "" : "⚠ "}{openingMismatchCopy({ diff: openingMismatch.diff, explainedCount: openingExplainedCount, accountName })}
+            {openingMismatchCopy({ diff: openingMismatch.diff, explainedCount: openingExplainedCount, accountName })}
           </div>
         </div>
       )}

@@ -10,7 +10,7 @@ describe("the tile counts what landed", () => {
   });
 
   it("★ nothing landed → no ✓ at all", () => {
-    expect(invoiceOutcomeCopy({ invoiceCount: 0, refusedCount: 1, refusedVendor: "Roma Cheese" })).toBe("⚠ Roma Cheese couldn't be added — see the message for why");
+    expect(invoiceOutcomeCopy({ invoiceCount: 0, refusedCount: 1, refusedVendor: "Roma Cheese" })).toBe("Roma Cheese couldn't be added — see the message for why");
   });
 
   it("★ a file with one invoice filed and one refused says both", () => {
@@ -32,7 +32,7 @@ describe("an answered question is described by its answer", () => {
     [[{ kind: "booked", landed: true }], "✓ Added to your books: Ace · $50.00"],
     [[{ kind: "skipped", landed: false }], "Set aside — not added: Ace · $50.00"],
     [[{ kind: "deferred", landed: false }], "Sent to our team: Ace · $50.00"],
-    [[{ kind: "booked", landed: false }], "⚠ Not added yet: Ace · $50.00 — open it again from Home"],
+    [[{ kind: "booked", landed: false }], "Not added yet: Ace · $50.00 — open it again from Home"],
     [[], "Answered: Ace · $50.00"],
   ])("%j → %s", (answers, want) => {
     expect(invoiceOutcomeCopy({ ...asked, answers }, { pendingReview: false })).toBe(want);

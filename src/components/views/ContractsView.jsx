@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor, fmtDate , fmtSignedMoney, todayLocal } from "../../lib/format";
@@ -33,11 +34,11 @@ export default function ContractsView() {
                       </div>
                     ) : (
                       <div>
-                        <div style={{ fontSize:36, marginBottom:12 }}>📋</div>
+                        <div style={{ fontSize:36, marginBottom:12 }}><Icon name="clipboard" size={36} /></div>
                         <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop a contract or agreement here</div>
                         <div style={{ fontSize:13, color:"var(--sc-text-2)", marginBottom:16 }}>PDF or image · Loans · Leases · Revenue contracts · Subscriptions · Equipment financing · Service agreements</div>
                         <div style={{ display:"flex", justifyContent:"center", gap:8, flexWrap:"wrap" }}>
-                          {Object.values(CONTRACT_TYPES).map(t=><span key={t.label} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", borderRadius:20, padding:"4px 12px", fontSize:11, color:"var(--sc-text-2)" }}>{t.icon} {t.label}</span>)}
+                          {Object.values(CONTRACT_TYPES).map(t=><span key={t.label} style={{ background:"var(--sc-border)", border:"1px solid var(--sc-border-2)", borderRadius:20, padding:"4px 12px", fontSize:11, color:"var(--sc-text-2)" }}><Icon name={t.icon} size={12} style={{ marginRight: 4 }} />{t.label}</span>)}
                         </div>
                       </div>
                     )}
@@ -59,7 +60,7 @@ export default function ContractsView() {
                       )}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))", gap:16 }}>
                       {contracts.map(c => {
-                        const ct = CONTRACT_TYPES[c.contract_type] || { label:c.contract_type, color:"var(--sc-text-2)", icon:"📄" };
+                        const ct = CONTRACT_TYPES[c.contract_type] || { label:c.contract_type, color:"var(--sc-text-2)", icon:"document" };
                         const postedCount = c.posted_entries?.length||0;
                         const totalEntries = c.journal_entries?.length||0;
                         return (
@@ -80,7 +81,7 @@ export default function ContractsView() {
                             </button>
                             <div onClick={()=>{ setSelectedContract(c); setContractView("detail"); }} style={{ cursor:"pointer" }}>
                             <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:14 }}>
-                              <div style={{ width:42, height:42, borderRadius:10, background:ct.color+"22", border:`1px solid ${ct.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>{ct.icon}</div>
+                              <div style={{ width:42, height:42, borderRadius:10, background:ct.color+"22", border:`1px solid ${ct.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, color:ct.color }}><Icon name={ct.icon} size={20} /></div>
                               <div style={{ flex:1, minWidth:0, paddingRight:24 }}>
                                 <div style={{ fontSize:11, color:ct.color, letterSpacing:1, marginBottom:4 }}>{ct.label.toUpperCase()}</div>
                                 <div style={{ fontSize:14, fontWeight:600, lineHeight:1.3 }}>{c.counterparty}</div>
@@ -118,7 +119,7 @@ export default function ContractsView() {
 
               {/* CONTRACT DETAIL */}
               {contractView==="detail" && selectedContract && (() => {
-                const ct = CONTRACT_TYPES[selectedContract.contract_type] || { label:selectedContract.contract_type, color:"var(--sc-text-2)", icon:"📄" };
+                const ct = CONTRACT_TYPES[selectedContract.contract_type] || { label:selectedContract.contract_type, color:"var(--sc-text-2)", icon:"document" };
                 const fmt = fmtSignedMoney;
                 return (
                   <div>
@@ -126,7 +127,7 @@ export default function ContractsView() {
 
                     {/* Header */}
                     <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
-                      <div style={{ width:52, height:52, borderRadius:14, background:ct.color+"22", border:`1px solid ${ct.color}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{ct.icon}</div>
+                      <div style={{ width:52, height:52, borderRadius:14, background:ct.color+"22", border:`1px solid ${ct.color}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, color:ct.color }}><Icon name={ct.icon} size={24} /></div>
                       <div>
                         <div style={{ fontSize:11, color:ct.color, letterSpacing:2, marginBottom:4 }}>{ct.label.toUpperCase()}</div>
                         <h1 style={{ fontSize:24, fontWeight:600, margin:0 }}>{selectedContract.counterparty}</h1>
@@ -152,7 +153,7 @@ export default function ContractsView() {
                     {/* ASC 842 Rate disclosure banner */}
                     {selectedContract.contract_type==="lease" && (
                       <div style={{ background:"var(--sc-success-soft)", border:"1px solid var(--sc-success-soft)", borderRadius:10, padding:"12px 18px", marginBottom:20, display:"flex", gap:16, alignItems:"flex-start" }}>
-                        <div style={{ fontSize:18, flexShrink:0 }}>📊</div>
+                        <div style={{ fontSize:18, flexShrink:0 }}><Icon name="chart" size={18} /></div>
                         <div>
                           <div style={{ fontSize:12, fontWeight:600, color:"var(--sc-success)", marginBottom:4 }}>ASC 842 Measurement Disclosure</div>
                           <div style={{ fontSize:12, color:"var(--sc-text-2)", lineHeight:1.7 }}>

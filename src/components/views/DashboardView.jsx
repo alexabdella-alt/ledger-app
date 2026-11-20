@@ -8,6 +8,7 @@ import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, ownerNeedHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
 import { useCompletenessState, statementNeedsFrom } from "./MonthStatus";
 import ReceiptsToAdd from "../ReceiptsToAdd";
+import Icon from "../Icon";
 import { firstUnsignedMonth } from "../../lib/workbench";
 import { monthLabel as ownerMonthLabel } from "../../lib/ownerTrust";
 import { markNewSince, sinceLastLookedHeader } from "../../lib/sinceLastLooked";
@@ -43,7 +44,7 @@ import { useDrillStack } from "../../lib/useDrillStack";
 import DrillNav from "../ui/DrillNav";
 import TransactionDetailPanel from "../TransactionDetailPanel";
 import { sortByUrgency } from "../../lib/cardUrgency";
-import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone, queueCensus, queueSummaryCopy, queueItemStatusCopy } from "../../lib/uploadQueueTile";
+import { QUEUE_TONE, queueIsSettled, queueItemChip, queueItemIcon, queueItemTone, queueCensus, queueSummaryCopy, queueItemStatusCopy, NOT_DOCUMENT_ACTION } from "../../lib/uploadQueueTile";
 import { budgetCopy } from "../../lib/aiBudget";
 
 // Breadcrumb label for a dashboard drill layer (used by the shared onion-nav stack).
@@ -560,7 +561,7 @@ export default function DashboardView() {
                 <input id="universal-upload" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.csv,.xlsx,.xls" style={{display:"none"}} onChange={e=>{ handleUniversalUpload(e.target.files); e.target.value=""; }} />
                 {/* ★ C736 — on a phone, the camera opens straight away (screenshots: the other button) */}
                 <input id="universal-camera" type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{ handleUniversalUpload(e.target.files); e.target.value=""; }} />
-                <div className="sc-dropzone-icon" style={{ width:64, height:64, margin:"0 auto 18px", borderRadius:18, background:universalDragOver?"var(--sc-gold)":"var(--sc-gold-soft)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:universalDragOver?"var(--sc-surface)":"var(--sc-gold)", opacity: universalDragOver?1:0.92 }}>⬆</div>
+                <div className="sc-dropzone-icon" style={{ width:64, height:64, margin:"0 auto 18px", borderRadius:18, background:universalDragOver?"var(--sc-gold)":"var(--sc-gold-soft)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:28, color:universalDragOver?"var(--sc-surface)":"var(--sc-gold)", opacity: universalDragOver?1:0.92 }}><Icon name="upload" size={28} /></div>
                 <div className="sc-desk-only" style={{ fontSize:22, fontWeight:700, color:"var(--sc-text)", marginBottom:8, letterSpacing:-0.4, justifyContent:"center" }}>
                   {universalDragOver ? DROPZONE_COPY.dragging : DROPZONE_COPY.title}
                 </div>
@@ -573,7 +574,7 @@ export default function DashboardView() {
                 </div>
                 <div data-phone-upload className="sc-phone-only" style={{ flexDirection:"column", gap:10, alignItems:"stretch", maxWidth:320, margin:"0 auto 14px" }}>
                   <button type="button" data-phone-camera onClick={e=>{ e.stopPropagation(); document.getElementById("universal-camera").click(); }}
-                    style={{ padding:"14px 18px", borderRadius:12, fontSize:16, fontWeight:600, background:"var(--sc-gold)", color:"var(--sc-on-accent)", border:"none", cursor:"pointer" }}>{DROPZONE_COPY.camera}</button>
+                    style={{ padding:"14px 18px", borderRadius:12, fontSize:16, fontWeight:600, background:"var(--sc-gold)", color:"var(--sc-on-accent)", border:"none", cursor:"pointer", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:8 }}><Icon name="camera" size={19} />{DROPZONE_COPY.camera}</button>
                   <button type="button" data-phone-library onClick={e=>{ e.stopPropagation(); document.getElementById("universal-upload").click(); }}
                     style={{ padding:"13px 18px", borderRadius:12, fontSize:15, fontWeight:600, background:"var(--sc-surface)", color:"var(--sc-text)", border:"1px solid var(--sc-border-2)", cursor:"pointer" }}>{DROPZONE_COPY.library}</button>
                 </div>
@@ -624,12 +625,12 @@ export default function DashboardView() {
                   {!folded && <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                     {uploadQueue.map(item => {
                       const typeConfig = {
-                        invoice:       { icon:"🧾", label:"Invoice",         color:"var(--sc-gold)" },
-                        bank_statement:{ icon:"🏦", label:"Bank Statement",  color:"var(--sc-gold)" },
-                        contract:      { icon:"📋", label:"Contract",        color:"var(--sc-warning)" },
-                        unknown:       { icon:"❓", label:"Not sure what this is", color:"var(--sc-error)" },
+                        invoice:       { icon:"receipt", label:"Invoice",         color:"var(--sc-gold)" },
+                        bank_statement:{ icon:"bank", label:"Bank Statement",  color:"var(--sc-gold)" },
+                        contract:      { icon:"clipboard", label:"Contract",        color:"var(--sc-warning)" },
+                        unknown:       { icon:"help", label:"Not sure what this is", color:"var(--sc-error)" },
                       };
-                      const tc = typeConfig[item.type] || { icon:"📄", label:"Document", color:"var(--sc-text-2)" };
+                      const tc = typeConfig[item.type] || { icon:"document", label:"Document", color:"var(--sc-text-2)" };
                       const pendingReview = item.status==="done" && clarificationQueue.some(c => c.queueItemId === item.id && !c.resolved);
                       // O97 — ONE reading of what this item's state means (`uploadQueueTile.js`).
                       // Five style expressions used to decide that independently, which is how a
@@ -648,7 +649,7 @@ export default function DashboardView() {
                         <div key={item.id} style={{ background:"var(--sc-surface)", border:`1px solid ${toneBorder}`, borderRadius:12, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                           {/* File icon */}
                           <div style={{ width:38, height:38, borderRadius:10, background:"var(--sc-border)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
-                            {queueItemIcon(tone, tc.icon)}
+                            <Icon name={queueItemIcon(tone, tc.icon)} size={18} />
                           </div>
                           {/* Info */}
                           <div style={{ flex:1, minWidth:0 }}>
@@ -687,7 +688,7 @@ export default function DashboardView() {
                                 ) :
                                 item.result.to === "choose" ? (
                                   // C587 — the question itself is in the list at the top of Home, with a button per account.
-                                  <span>📄 One question before we add this: which account is it from? <span onClick={()=>document.getElementById("waiting-on-you")?.scrollIntoView({ behavior:"smooth", block:"center" })} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }}>Answer at the top of this page ↑</span></span>
+                                  <span>One question before we add this: which account is it from? <span onClick={()=>document.getElementById("waiting-on-you")?.scrollIntoView({ behavior:"smooth", block:"center" })} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }}>Answer at the top of this page ↑</span></span>
                                 ) :
                                 item.result.txnCount == null ? (
                                   // Routed to Bank Import — matching/booking happens THERE (after the
@@ -697,10 +698,10 @@ export default function DashboardView() {
                                   // as status — what happened to their file and who has it next.
                                   cockpit ? (
                                     <span onClick={()=>navTo("bank")} style={{ cursor:"pointer", textDecoration:"underline", textUnderlineOffset:2 }} title="Open Bank Import">
-                                      📄 Ready in Bank Import — review &amp; book your transactions there →
+                                      Ready in Bank Import — review &amp; book your transactions there →
                                     </span>
                                   ) : (
-                                    <span>{hasAccountant ? "📄 We've got your statement — our team will add these to your books." : "📄 We've got your statement — our team will add these to your books."}</span>
+                                    <span>{hasAccountant ? "We've got your statement — our team will add these to your books." : "We've got your statement — our team will add these to your books."}</span>
                                   )
                                 ) : (
                                   cockpit ? (
@@ -714,9 +715,16 @@ export default function DashboardView() {
                               )}
                               {item.status==="done" && item.type==="contract" && item.result && `✓ ${tc.label} · ${item.result.counterparty} · ${item.result.entries} record${item.result.entries===1?"":"s"} created`}
                               {item.status==="done" && item.type==="unknown" && item.result && queueItemStatusCopy(item, { cockpit, hasAccountant })}
+                              {/* ★ C763 — not a business document: one tap to tell the assistant it was a purchase */}
+                              {item.status==="done" && item.type==="unknown" && item.result?.not_document && !cockpit && (
+                                <div style={{ marginTop:6 }}>
+                                  <button data-not-document-purchase onClick={()=>{ setChatPrefill && setChatPrefill({ at: Date.now(), text: NOT_DOCUMENT_ACTION.prefill(item.result.what) }); setChatOpen(true); }}
+                                    style={{ padding:"5px 12px", borderRadius:8, fontSize:12, fontWeight:600, background:"transparent", border:"1px solid var(--sc-border-2)", color:"var(--sc-text)", cursor:"pointer" }}>{NOT_DOCUMENT_ACTION.label} →</button>
+                                </div>
+                              )}
                               {item.docError && (
                                 <div style={{ marginTop:5, fontSize:11, color:"var(--sc-error)", background:"var(--sc-error-soft)", border:"1px solid var(--sc-error-soft)", borderRadius:7, padding:"6px 9px", lineHeight:1.45, whiteSpace:"normal" }}>
-                                  ⚠ Document not saved to cloud: {item.docError}
+                                  Document not saved to cloud: {item.docError}
                                 </div>
                               )}
                             </div>
@@ -834,7 +842,7 @@ export default function DashboardView() {
                 return (
                   <div style={{ background:"var(--sc-warning-soft)", border:"1px solid var(--sc-warning-soft)", borderRadius:14, marginBottom:24, overflow:"hidden" }}>
                     <div onClick={()=>setAnomExpanded(v=>!v)} style={{ padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-                      <div style={{ fontSize: 13, fontWeight:600, color:"var(--sc-warning)" }}>⚠ {anomalies.length} unusual {anomalies.length===1?"pattern":"patterns"} detected</div>
+                      <div style={{ fontSize: 13, fontWeight:600, color:"var(--sc-warning)", display:"flex", alignItems:"center", gap:6 }}><Icon name="alert" size={15} /> {anomalies.length} unusual {anomalies.length===1?"pattern":"patterns"} detected</div>
                       <span style={{ fontSize:12, color:"var(--sc-warning)", fontWeight:600 }}>{anomExpanded?"Hide ▲":"Review ▼"}</span>
                     </div>
                     {anomExpanded && (
@@ -889,7 +897,7 @@ export default function DashboardView() {
                   const party = displayParty(inv, invoices);   // C539 — a settlement's own vendor is the word "Payment"
                   // C540 — a correction (C470) is not income from the supplier: it read 💰 "Bluebonnet — Linen & Laundry +$145".
                   const label = cls.opening ? "Starting balances recorded" : cls.correction ? `Corrected: ${party || "an entry"}` : cls.settle === "ap_payment" ? `Paid ${party || "a bill"}` : cls.settle === "ar_collection" ? `Received from ${party || "a customer"}` : `${inv.vendor||"Entry"} — ${cls.account?.name || inv.gl_name || "Booked"}`;
-                  items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.opening ? "🏁" : cls.correction ? "↩" : cls.inflow?"💰":"🧾", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
+                  items.push({ ts: inv.booked_at||inv.date||"", inv, icon: cls.opening ? "flag" : cls.correction ? "return" : cls.inflow?"coins":"receipt", text:`${label}${inv._lineCount > 1 ? ` · ${inv._lineCount} lines` : ""}`, amount: listAmount(inv), rev: cls.inflow });
                 });
                 (auditLog||[]).forEach(a => { if (/paid|approv|reject|recode|void|flag|info_requested/i.test(a.action||"")) {
                   // ★ SCRUBBED, not rendered raw. The audit log is written for the CPA and
@@ -899,7 +907,7 @@ export default function DashboardView() {
                   // total is worse than no line.
                   const text = ownerActivityText(a, { viewerEmail: session?.user?.email || "" });   // C747
                   if (!text) return;
-                  items.push({ ts:a.ts||a.created_at||"", icon: /paid/i.test(a.action)?"✅":/reject|void/i.test(a.action)?"🚫":/flag|info/i.test(a.action)?"⚠":"✦", text });
+                  items.push({ ts:a.ts||a.created_at||"", icon: /paid/i.test(a.action)?"check":/reject|void/i.test(a.action)?"ban":/flag|info/i.test(a.action)?"alert":"sparkle", text });
                 } });
                 items.sort((x,y)=>String(y.ts).localeCompare(String(x.ts)));
                 const ago = ts => { if(!ts) return ""; const s=(Date.now()-new Date(ts).getTime())/1000; if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m ago"; if(s<86400)return Math.floor(s/3600)+"h ago"; if(s<604800)return Math.floor(s/86400)+"d ago"; return fmtDate(ts); };
@@ -916,7 +924,7 @@ export default function DashboardView() {
                         <div key={idx} onClick={()=>{ if(it.inv){ setReturnTo({view:"home",label:"Home"}); setSelectedInvoice(it.inv); setView("detail"); } }}
                           onMouseEnter={e=>{ if(it.inv) e.currentTarget.style.background="var(--sc-surface-2)"; }} onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                           style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 24px", borderTop: idx?"1px solid var(--sc-surface-2)":"none", cursor: it.inv?"pointer":"default", transition:"background 0.1s" }}>
-                          <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"var(--sc-success-soft)":"var(--sc-error-soft)"):"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>{it.icon}</div>
+                          <div style={{ width:36, height:36, borderRadius:10, background: it.amount!=null?(it.rev?"var(--sc-success-soft)":"var(--sc-error-soft)"):"var(--sc-surface-2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0, color: it.amount!=null?(it.rev?"var(--sc-success)":"var(--sc-error)"):"var(--sc-text-2)" }}><Icon name={it.icon} size={17} /></div>
                           <div style={{ flex:1, minWidth:0 }}>
                             <div style={{ fontSize: 13, fontWeight:500, color:"var(--sc-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{it.text}</div>
                             <div style={{ fontSize:12, color:"var(--sc-text-mut)", marginTop:2 }}>{it.isNew && <span data-change-new style={{ color:"var(--sc-gold)", fontWeight:700, marginRight:6 }}>New</span>}{ago(it.ts)}</div>

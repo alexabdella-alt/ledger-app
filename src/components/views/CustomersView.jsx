@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { draftForCustomer } from "../../lib/invoiceDraft";
 import NextStep from "../NextStep";
 import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
@@ -220,8 +221,8 @@ export default function CustomersView() {
                               </div>
                               <div style={{ fontSize:12, color:"var(--sc-text-2)", marginTop:3 }}>
                                 {custInvoices.length>0 ? `${custInvoices.length} invoice${custInvoices.length!==1?"s":""}${lastDate?` · last ${fmtDate(lastDate)}`:""}` : "No invoices yet"}
-                                {c.email && <span style={{ marginLeft:10 }}>✉ {c.email}</span>}
-                                {c.phone && <span style={{ marginLeft:10 }}>📞 {c.phone}</span>}
+                                {c.email && <span style={{ marginLeft:10 }}><Icon name="mail" size={14} style={{ marginRight: 4 }} />{c.email}</span>}
+                                {c.phone && <span style={{ marginLeft:10 }}><Icon name="phone" size={14} style={{ marginRight: 4 }} />{c.phone}</span>}
                               </div>
                             </div>
                             <div className="sc-rowcard-end" style={{ display:"flex", gap:10, alignItems:"center", flexShrink:0 }}>
@@ -262,7 +263,7 @@ export default function CustomersView() {
                               </div>
                             </div>
                           )}
-                          {!isEditing && c.notes && <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}>📝 {c.notes}</div>}
+                          {!isEditing && c.notes && <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}><Icon name="note" size={14} style={{ marginRight: 4 }} />{c.notes}</div>}
                           {!isEditing && (c.min_expected||c.max_expected) && (
                             <div style={{ padding:"10px 20px", borderTop:"1px solid var(--sc-border)", fontSize:12, color:"var(--sc-text-2)" }}>
                               Expected revenue: <span style={{ color:"var(--sc-success)" }}>{fmt(c.min_expected||0)} – {fmt(c.max_expected||0)}/invoice</span>

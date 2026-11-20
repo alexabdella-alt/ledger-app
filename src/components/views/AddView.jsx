@@ -1,4 +1,5 @@
 import React from "react";
+import Icon from "../Icon";
 import { useERP } from "../ERPContext";
 import { glIsRevenue, glIsExpense, glIsBalSheet, glPLType } from "../../lib/gl";
 import { initials, vendorColor } from "../../lib/format";
@@ -16,9 +17,9 @@ export default function AddView() {
               {!uploadedFile && (
                 <div style={{ display:"flex", gap:10, marginBottom:20 }}>
                   {[
-                    { label:"📄 Invoice", active:true },
-                    { label:"🏦 Bank Statement", onClick:()=>setView("home") },
-                    { label:"📋 Contract / Agreement", onClick:()=>{ setView("contracts"); setContractView("list"); } },
+                    { label:"Invoice", active:true },
+                    { label:"Bank Statement", onClick:()=>setView("home") },
+                    { label:"Contract / Agreement", onClick:()=>{ setView("contracts"); setContractView("list"); } },
                   ].map(btn=>(
                     <button key={btn.label} onClick={btn.onClick} style={{ padding:"8px 16px", borderRadius:20, fontSize:12, background:btn.active?"var(--sc-gold)":"transparent", border:`1px solid ${btn.active?"var(--sc-gold)":"var(--sc-border-2)"}`, color:btn.active?"var(--sc-surface-2)":"var(--sc-text-2)", cursor:btn.onClick?"pointer":"default", fontWeight:btn.active?600:400 }}>{btn.label}</button>
                   ))}
@@ -29,7 +30,7 @@ export default function AddView() {
                   onDrop={e=>{e.preventDefault();setDragOver(false);handleFileSelect(e.dataTransfer.files[0]);}}
                   onClick={()=>document.getElementById("invoice-upload").click()}
                   style={{ border:`2px dashed ${dragOver?"var(--sc-gold)":"var(--sc-border-2)"}`, borderRadius:16, padding:"56px 32px", textAlign:"center", cursor:"pointer", background:dragOver?"var(--sc-surface-2)":"var(--sc-surface)", transition:"all 0.2s", marginBottom:24 }}>
-                  <div style={{ fontSize:38, marginBottom:14 }}>⬆</div>
+                  <div style={{ fontSize:38, marginBottom:14 }}><Icon name="upload" size={38} /></div>
                   <div style={{ fontSize:16, fontWeight:500, marginBottom:8 }}>Drop your invoice here</div>
                   <div style={{ fontSize:13, color:"var(--sc-text-2)" }}>PDF, JPG, PNG or WEBP · AI reads, extracts vendor & codes automatically</div>
                   <input id="invoice-upload" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style={{ display:"none" }} onChange={e=>handleFileSelect(e.target.files[0])} />
@@ -39,7 +40,7 @@ export default function AddView() {
                 <div style={{ background:"var(--sc-surface)", border:"1px solid var(--sc-border)", borderRadius:16, padding:28, marginBottom:20 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                     <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                      <div style={{ width:36, height:36, background:"var(--sc-border)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{uploadedFile.mediaType==="application/pdf"?"📄":"🖼"}</div>
+                      <div style={{ width:36, height:36, background:"var(--sc-border)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{uploadedFile.mediaType==="application/pdf"?"":""}</div>
                       <div>
                         <div style={{ fontSize:14, fontWeight:500 }}>{uploadedFile.name}</div>
                         <div style={{ fontSize:12, color:isAILoading?"var(--sc-gold)":"var(--sc-success)" }}>
@@ -66,9 +67,9 @@ export default function AddView() {
                           {form.vendor && <div style={{ width:34, height:34, borderRadius:8, background:vendorColor(form.vendor), display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"var(--sc-on-accent)", flexShrink:0 }}>{initials(form.vendor)}</div>}
                           <input value={form.vendor} onChange={e=>handleFormChange("vendor",e.target.value)} placeholder="Vendor name — required" style={{ ...inputStyle, border:!form.vendor?"1px solid var(--sc-error)":"1px solid var(--sc-border-2)", background:"var(--sc-surface-2)", fontWeight:500, fontSize:14 }} />
                         </div>
-                        {!form.vendor && <div style={{ fontSize:11, color:"var(--sc-error)", marginTop:6 }}>⚠ Required for tracking & rules</div>}
+                        {!form.vendor && <div style={{ fontSize:11, color:"var(--sc-error)", marginTop:6 }}><Icon name="alert" size={14} style={{ marginRight: 4 }} />Required for tracking & rules</div>}
                         {form.vendor && rules.find(r=>r.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
-                          <div style={{ fontSize:11, color:"var(--sc-success)", marginTop:6 }}>⚡ Vendor rule active — GL auto-applied</div>
+                          <div style={{ fontSize:11, color:"var(--sc-success)", marginTop:6 }}><Icon name="zap" size={14} style={{ marginRight: 4 }} />Vendor rule active — GL auto-applied</div>
                         )}
                         {form.vendor && allVendorNames.includes(form.vendor) && !rules.find(r=>r.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
                           <div style={{ fontSize:11, color:"var(--sc-success)", marginTop:6 }}>✓ Existing vendor — will group with previous invoices</div>
@@ -93,7 +94,7 @@ export default function AddView() {
                           border: form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) ? "1px solid var(--sc-warning)" : inputStyle.border
                         }} />
                         {form.invoice_number && invoices.find(ex=>ex.invoice_number&&ex.invoice_number.toLowerCase()===form.invoice_number.toLowerCase()&&ex.vendor?.toLowerCase()===form.vendor?.toLowerCase()) && (
-                          <div style={{ fontSize:11, color:"var(--sc-warning)", marginTop:5 }}>⚠ This invoice number already exists for {form.vendor || "this vendor"} — you'll be asked to confirm before booking</div>
+                          <div style={{ fontSize:11, color:"var(--sc-warning)", marginTop:5 }}><Icon name="alert" size={14} style={{ marginRight: 4 }} />This invoice number already exists for {form.vendor || "this vendor"} — you'll be asked to confirm before booking</div>
                         )}
                       </div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
