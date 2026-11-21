@@ -145,3 +145,16 @@ What each applied migration's checks returned, verbatim as recorded at the time 
 >
 > **RULE: every migration application gets its date recorded on this line, in the same docs commit that closes the session.** The repo records migration FILES; nothing in it records their APPLICATION, and there is no `supabase_migrations.schema_migrations` table to ask (see below — deliberately). So a file's presence proves only that it was written. Without this line every fresh session re-derives the answer, guesses wrong, and re-raises a migration as "still pending" that went live days ago. *(Cost already paid: `060` was flagged unapplied twice after it was live.)*
 
+
+## `102_subscriptions_stripe_only` — APPLIED & VERIFIED 2026-11-21 22:18 UTC (C771)
+
+Applied with `supabase db query --linked -f` on the operator's explicit go-ahead ("yes apply 102"), file sha256 `15e7517f56afdceb…`. Three checks from `supabase/verify/102_subscriptions_stripe_only.sql`, run one statement each:
+
+| check | before | after |
+|---|---|---|
+| (A) `has_table_privilege('authenticated', …, INSERT/UPDATE/DELETE)` | FAIL — authenticated can still insert/update/delete subscriptions | PASS — authenticated cannot insert, update or delete subscriptions |
+| (B) write policies on `subscriptions` | FAIL — subscriptions_delete, subscriptions_insert, subscriptions_update remain | PASS — read policy only |
+| (C) rolled-back probe: a new company gets one 14-day trial row | FAIL — 0 rows (the trial came only from CompanySetup's client insert) | PASS — exactly one 14-day trial row |
+
+A false pass would have looked like (A) passing on an ACL regex while a PUBLIC grant still allowed writes — hence `has_table_privilege`, Postgres's own resolver. The same session deployed `billing` (v1, JWT on) and `stripe-webhook` (v1, `--no-verify-jwt`, signature-checked) at 22:10 UTC; probed: `billing` with no login → 401, `stripe-webhook` unsigned → 400 "bad signature".
+
