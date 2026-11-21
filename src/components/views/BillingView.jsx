@@ -2,7 +2,7 @@ import React from "react";
 import { useERP } from "../ERPContext";
 import Icon from "../Icon";
 import { fmtDate } from "../../lib/format";
-import { PLANS, billingState, billingHeadline, billingSub } from "../../lib/billing";
+import { PLANS, PLANS_EXCLUDE, QUOTE_CONTACT_EMAIL, sizeLimitCopy, billingState, billingHeadline, billingSub } from "../../lib/billing";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // C771 — SETTINGS → PLAN & BILLING. Where the company stands (trial / plan / payment problem), the
@@ -48,12 +48,25 @@ export default function BillingView() {
             <div key={p.id} data-billing-plan={p.id} style={{ ...card, marginBottom: 0, display: "flex", flexDirection: "column" }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: "var(--sc-text)" }}>{p.name}</div>
               {p.price != null && <div style={{ fontSize: 22, fontWeight: 700, marginTop: 6, fontFamily: "'DM Mono', monospace" }}>${p.price}<span style={{ fontSize: 13, color: "var(--sc-text-2)", fontWeight: 500 }}> / month</span></div>}
-              <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 8, lineHeight: 1.55, flex: 1 }}>{p.blurb}</div>
+              <div style={{ fontSize: 13, color: "var(--sc-text-2)", marginTop: 8, lineHeight: 1.55 }}>{p.blurb}</div>
+              <ul data-billing-includes style={{ listStyle: "none", padding: 0, margin: "12px 0 0", flex: 1 }}>
+                {(p.includes || []).map((x) => (
+                  <li key={x} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--sc-text)", lineHeight: 1.5, padding: "3px 0" }}>
+                    <Icon name="check" size={15} style={{ color: "var(--sc-success)", marginTop: 2 }} /><span>{x}</span>
+                  </li>
+                ))}
+              </ul>
               {canChange
                 ? <button data-billing-choose={p.id} onClick={() => go(p.id, () => startCheckout(p.id))} disabled={!!busy} style={{ ...primary, marginTop: 14, alignSelf: "flex-start" }}>{busy === p.id ? "Opening…" : `Choose ${p.name}`}</button>
                 : null}
             </div>
           ))}
+        </div>
+      )}
+      {!paying && (
+        <div data-billing-terms style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 14, lineHeight: 1.6 }}>
+          <div>{QUOTE_CONTACT_EMAIL ? <>{sizeLimitCopy().replace(" Contact us for a quote.", " ")}<a href={`mailto:${QUOTE_CONTACT_EMAIL}?subject=${encodeURIComponent("Quote for a larger business")}`} style={{ color: "var(--sc-text)", fontWeight: 600 }}>Contact us for a quote.</a></> : sizeLimitCopy()}</div>
+          <div style={{ marginTop: 4 }}>{PLANS_EXCLUDE}</div>
         </div>
       )}
       {!canChange && <div data-billing-readonly style={{ fontSize: 12.5, color: "var(--sc-text-2)", marginTop: 14 }}>Only the owner or an admin can change the plan.</div>}

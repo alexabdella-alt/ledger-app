@@ -110,9 +110,27 @@ const CELL = {
   before:      { c: "var(--sc-text-mut)", bg: "transparent",           t: "",  label: "Before the books start" },
 };
 export { loadCompleteness };   // C740 — moved to lib/completenessLoad.js (shared with the owner's month list)
+// ★ C772 — each client's plan beside their name, so the monthly review goes to Pro clients (Starter is
+// kept automatically). Read on its own and never fatal: a failed read just shows no badge.
+export function planBadge(sub, now = new Date()) {
+  if (!sub) return null;
+  if (sub.status === "active" || sub.status === "past_due") return { t: sub.plan === "pro" ? "Pro" : "Starter", pro: sub.plan === "pro", warn: sub.status === "past_due" };
+  if (sub.status === "canceled") return { t: "Canceled", pro: false, warn: true };
+  const left = Math.ceil((Date.parse(sub.trial_ends_at || "") - now.getTime()) / 86400000);
+  return { t: Number.isFinite(left) && left > 0 ? `Trial · ${left}d` : "Trial ended", pro: false, warn: !(left > 0) };
+}
 export function CompletenessTab({ supabase, enterSupport, initial = null }) {
   const [state, setState] = React.useState(initial || { loading: true });
   const [open, setOpen] = React.useState(null);
+  const [plans, setPlans] = React.useState({});
+  React.useEffect(() => {
+    let off = false;
+    if (!supabase || !supabase.from) return undefined;
+    Promise.resolve(supabase.from("subscriptions").select("company_id, plan, status, trial_ends_at, created_at").order("created_at", { ascending: true }))
+      .then((res) => { if (off || !res || res.error) return; const m = {}; for (const r of res.data || []) m[r.company_id] = r; setPlans(m); })
+      .catch(() => {});
+    return () => { off = true; };
+  }, [supabase]);
   const load = React.useCallback(async () => {
     setState({ loading: true });
     setState(await loadCompleteness(supabase, new Date()));
@@ -152,7 +170,7 @@ export function CompletenessTab({ supabase, enterSupport, initial = null }) {
               {state.report.map((r) => (
                 <React.Fragment key={r.companyId}>
                   <tr data-completeness-row={r.status} onClick={() => setOpen(open === r.companyId ? null : r.companyId)} style={{ cursor: r.items.length ? "pointer" : "default", borderTop: "1px solid var(--sc-surface-2)" }}>
-                    <td style={{ padding: "9px 10px", fontSize: 13, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap" }}>{r.name}</td>
+                    <td style={{ padding: "9px 10px", fontSize: 13, fontWeight: 600, color: "var(--sc-text)", whiteSpace: "nowrap" }}>{r.name}{(() => { const b = planBadge(plans[r.companyId]); return b ? <span data-plan-badge style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, borderRadius: 10, padding: "1px 7px", color: b.warn ? "var(--sc-warning)" : b.pro ? "var(--sc-on-accent)" : "var(--sc-text-2)", background: b.warn ? "var(--sc-warning-soft)" : b.pro ? "var(--sc-gold)" : "var(--sc-surface-2)" }}>{b.t}</span> : null; })()}</td>
                     {r.months.map((m) => { const cell = m.locked && m.status === "complete" ? { ...CELL.complete, t: "✓", label: "Complete and closed" } : CELL[m.status]; return (   // C740 — a closed month
                       <td key={m.period} title={`${monthName(m.period)} — ${cell.label}`} style={{ padding: "6px 4px", textAlign: "center" }}>
                         <span style={{ display: "inline-flex", width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: cell.c, background: cell.bg }}>{cell.t}</span>

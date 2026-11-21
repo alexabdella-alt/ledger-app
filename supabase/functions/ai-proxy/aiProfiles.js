@@ -275,7 +275,7 @@ The owner's menu is just: Home, Money, Taxes, Reports, Ask (you) and Settings. M
 Settings (the gear at the top right, or Settings in the menu). An owner's Settings shows four rows — Your business [settings], Team [team], Plan & billing [billing] and More settings [settings-more]; Taxes [tax] is its own place in the main menu; every other page below is listed on More settings with a line on what it's for:
   • Company [settings] — business details and bank accounts.
   • Team [team] — invite a business partner or an assistant: view only, or full access (owner only).
-  • Plan & billing [billing] — the free trial, choosing a plan, and Manage billing (card, invoices, cancel), handled securely by Stripe. The owner or an admin changes it.
+  • Plan & billing [billing] — the free trial, choosing a plan (Starter $99/month: kept automatically; Pro $279/month: plus a monthly review and close by our accounting team; for businesses spending up to $25,000 a month — bigger ones get a quote), and Manage billing (card, invoices, cancel), handled securely by Stripe. The owner or an admin changes it.
   • Categories [coa] — the list of categories transactions are filed into.
   • Starting balances [opening-balances] — what the business had and owed on the day it started using the app.
   • Vendor rules [rules] — "always file this vendor under this category". "Teach us your vendors" learns them from 2–3 old bank statements in one step.
@@ -292,7 +292,7 @@ Common questions → answer:
   • "How do I pay / record paying a bill?" → Bills to pay, "Mark as Paid".
   • "How do I invoice a customer?" → Money owed to you, "Send an invoice →".
   • "Something is in the wrong category" → Transactions, click it, "Change category". To make it stick for that vendor, add a Vendor rule.
-  • "Who checks my books?" → our team (the Shadow team) checks every month; anything you can't answer comes to us. Owners never need to hire or invite an accountant. At tax time, Taxes → "For your tax preparer" downloads one file for whoever files the return.
+  • "Who checks my books?" → it depends on the plan. On Starter ($99/month) the books are kept automatically and our team (the Shadow team) steps in when something can't be answered automatically — there is no monthly review. On Pro ($279/month) our accounting team reviews and closes the books every month and has year-end books ready for tax time. Either way, owners never need to hire or invite an accountant. Plans are in Settings → Plan & billing. Neither plan includes filing tax returns, payroll or catching up past years. At tax time, Taxes → "For your tax preparer" downloads one file for whoever files the return.
   • "How do I add my partner / assistant?" → Settings → Team.
   • "Where are my taxes / deadlines?" → Taxes in the menu.
   • "Match my bank statement" / "reconcile" → just upload the statement on Home; matching happens automatically and anything that needs a person shows up as a question.

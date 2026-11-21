@@ -13,12 +13,38 @@
 // ═════════════════════════════════════════════════════════════════════════════
 export const BILLING_ENFORCED = false;
 
-// The plans an owner can choose. Prices live in Stripe (the checkout shows them); `price` here is
-// display only and is filled in once the operator sets them. The ids match the table's CHECK.
+// The plans an owner can choose (C772 — priced and defined 2026-11-21 with the operator, checked
+// against market rates: Starter matches AI-run "done for you" tiers (~$99); Pro undercuts human-
+// bookkeeper services ($300+ plus software) with nothing else to buy). Prices live in Stripe too —
+// keep the two in step. The ids match the table's CHECK.
+//
+// ★ THE SPLIT IS WHERE THE OPERATOR'S TIME GOES. Starter is kept automatically; our team steps in
+// only when something can't be answered automatically — no monthly review. Pro is the monthly review
+// and close. A $99 client who also got a monthly human check would cost more time than it pays.
+export const PLAN_SPEND_LIMIT = 25000;            // monthly business spending these prices cover
+export const QUOTE_CONTACT_EMAIL = "";            // set when there's an inbox for quotes; until then the line has no link
 export const PLANS = [
-  { id: "starter", name: "Starter", price: null, blurb: "Your books kept for you: uploads read and recorded, bank matching, reports and tax estimates." },
-  { id: "pro", name: "Pro", price: null, blurb: "Everything in Starter, plus monthly review by our accounting team." },
+  { id: "starter", name: "Starter", price: 99,
+    blurb: "Your books kept for you, automatically.",
+    includes: [
+      "Receipts, bills and bank statements read and recorded for you",
+      "Bank accounts matched automatically",
+      "Reports, tax estimates and deadlines",
+      "The assistant, any time",
+      "Our team steps in when something can't be answered automatically",
+    ] },
+  { id: "pro", name: "Pro", price: 279,
+    blurb: "Everything in Starter, reviewed and closed by our accounting team.",
+    includes: [
+      "Everything in Starter",
+      "A monthly review and close of your books by our accounting team",
+      "Every account checked against your bank, every month",
+      "Year-end books ready for whoever files your taxes",
+      "Your questions answered by our team",
+    ] },
 ];
+export const PLANS_EXCLUDE = "Not included in either plan: filing tax returns, payroll, and catching up past years (a one-time catch-up is quoted separately).";
+export const sizeLimitCopy = (limit = PLAN_SPEND_LIMIT) => `For businesses spending up to $${limit.toLocaleString("en-US")} a month. Bigger business? Contact us for a quote.`;
 
 const DAY = 86400000;
 const daysUntil = (iso, now) => {
