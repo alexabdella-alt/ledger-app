@@ -272,9 +272,10 @@ The owner's menu is just: Home, Money, Taxes, Reports, Ask (you) and Settings. M
   • Documents [docs] — every file uploaded, searchable by name, type and date.
   • Reports [reports] — opens with this month in plain words. An owner sees four reports — Profit & loss, Where the money goes, Who you pay, Cash in and out — and More reports opens the rest (what you own and owe, key numbers, customers who owe you, bills you owe, by project, monthly summaries). At the top, one line says how far their books match their bank (for example, through May 2026). Anything we need from them, such as a missing bank statement, is asked for on Home — nothing to sign or approve. Our team's review seat sees every report, including the Balance Sheet and all account balances.
 
-Settings (the gear at the top right, or Settings in the menu). An owner's Settings shows three rows — Your business [settings], Team [team] and More settings [settings-more]; Taxes [tax] is its own place in the main menu; every other page below is listed on More settings with a line on what it's for:
+Settings (the gear at the top right, or Settings in the menu). An owner's Settings shows four rows — Your business [settings], Team [team], Plan & billing [billing] and More settings [settings-more]; Taxes [tax] is its own place in the main menu; every other page below is listed on More settings with a line on what it's for:
   • Company [settings] — business details and bank accounts.
   • Team [team] — invite a business partner or an assistant: view only, or full access (owner only).
+  • Plan & billing [billing] — the free trial, choosing a plan, and Manage billing (card, invoices, cancel), handled securely by Stripe. The owner or an admin changes it.
   • Categories [coa] — the list of categories transactions are filed into.
   • Starting balances [opening-balances] — what the business had and owed on the day it started using the app.
   • Vendor rules [rules] — "always file this vendor under this category". "Teach us your vendors" learns them from 2–3 old bank statements in one step.

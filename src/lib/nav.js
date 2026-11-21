@@ -93,7 +93,7 @@ export const CLIENT_NAV_SECTIONS = [
 // ★ C638 — THE OWNER'S SETTINGS: FOUR ROWS, NOT TEN. "Your business", "Team", "Taxes", and one
 // "More settings" page that lists the rest with a line each on what it is for. The accountant
 // keeps every Settings row. Nothing is removed — every page is still one click from "More settings".
-export const OWNER_SETTINGS_ITEMS = [["settings", "Your business"], ["team", "Team"], ["settings-more", "More settings"]];   // C729 — Taxes moved to the main menu
+export const OWNER_SETTINGS_ITEMS = [["settings", "Your business"], ["team", "Team"], ["billing", "Plan & billing"], ["settings-more", "More settings"]];   // C771 — Plan & billing   // C729 — Taxes moved to the main menu
 // The pages "More settings" opens — a client standing on any of them sees "More settings" highlighted.
 export const MORE_SETTINGS_GROUP = ["settings-more", "coa", "opening-balances", "rules", "recurring", "audit", "onboard", "legal"];
 // Rows that are ACTIONS, not pages: "Ask" opens the assistant beside whatever you are on.
@@ -116,7 +116,7 @@ export const NAV_SECTION_SETTINGS = { id: "settings", label: "Settings", items: 
   ["settings", "Company"], ["team", "Team"], ["coa", "Categories"],
   ["opening-balances", "Starting balances"], ["rules", "Vendor rules"], ["recurring", "Recurring charges"],
   ["tax", "Taxes"], ["tax1099", "Tax forms (1099s)"], ["audit", "Audit trail"],
-  ["onboard", "Import from QuickBooks"],
+  ["onboard", "Import from QuickBooks"], ["billing", "Plan & billing"],
 ] };
 
 // C382 — the human name of a view id, read off the same rows the sidebar draws, so a
@@ -140,7 +140,7 @@ export const sectionViewIds = (sections) =>
 // trail. Listed here so the guard never bounces a client out of their own setup.
 export const SETTINGS_VIEW_IDS = [
   "settings", "settings-more", "team", "coa", "opening-balances", "onboard", "rules", "recurring",
-  "tax1099", "tax", "audit", "legal",
+  "tax1099", "tax", "audit", "legal", "billing",
 ];
 
 // What the CLIENT seat may open: their own nav (see NAV_SECTIONS), plus

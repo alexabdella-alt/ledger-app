@@ -26,9 +26,9 @@ describe("the owner's menu", () => {
     expect(rows(visibleNav({ role: "accountant" }))).toEqual(["home", "books", "ap", "ar", "customers", "vendors", "docs", "reports", "ask", "review"]);
     expect(activeNavItem("ap", { seat: "reviewer" })).toBe("ap");
   });
-  it("★ in Settings, the owner sees three rows (C638; C729 — Taxes moved to the main menu) — and every setup page is still openable", () => {
+  it("★ in Settings, the owner sees four rows (C638; C729 — Taxes moved to the main menu; C771 — Plan & billing) — and every setup page is still openable", () => {
     const r = rows(visibleNav({ ...owner, inSettings: true }));
-    expect(r.slice(-3)).toEqual(["settings", "team", "settings-more"]);
+    expect(r.slice(-4)).toEqual(["settings", "team", "billing", "settings-more"]);
     expect(r.filter((x) => x === "settings")).toHaveLength(1);
     for (const v of ["coa", "opening-balances", "rules", "recurring", "audit", "onboard", "tax1099"]) {
       expect([v, canSeeView(v, owner)]).toEqual([v, true]);

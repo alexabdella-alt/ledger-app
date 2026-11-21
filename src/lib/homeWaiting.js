@@ -80,6 +80,7 @@ export function homeWaitingList({
   onboarding = false,        // C733 — the setup checklist is on screen (it asks for the first statement itself)
   cashBelowZero = null,      // C731 — the books' cash when it is below zero (GL-derived by the caller), else null
   statementNeeds = [],       // C760 — ownerBooksStatus(...).need: the specific statements we need ("September – October 2026 — …")
+  trial = null,              // C771 — trialReminder(...): { text, urgent } near/after the end of the free trial
 } = {}) {
   const items = [];
 
@@ -93,6 +94,9 @@ export function homeWaitingList({
       actions: [{ kind: "stepper", label: stops > 0 ? "Answer these" : "Have a look" }],
     });
   }
+
+  // ★ C771 — the free trial ending (or a failed payment): one line, one door to Plan & billing.
+  if (trial && trial.text) items.push({ id: "trial", urgency: trial.urgent ? WAIT.NOW : WAIT.SOON, text: trial.text, actions: [{ kind: "nav", label: "Choose a plan", view: "billing" }] });
 
   // ── NOW ──
   if ((heldQuestions || []).length) {

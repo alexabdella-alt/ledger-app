@@ -7,6 +7,7 @@ import { categoryLabel, showCodesFor } from "../../lib/categoryLabel";
 import { plainWriteError } from "../../lib/plainWriteError";
 import { homeWaitingList, waitingHeadline, ownerNeedHeadline, WAIT, monthReadyToSign } from "../../lib/homeWaiting";
 import { useCompletenessState, statementNeedsFrom } from "./MonthStatus";
+import { trialReminder } from "../../lib/billing";
 import ReceiptsToAdd from "../ReceiptsToAdd";
 import AddToHomeScreen from "../AddToHomeScreen";
 import Icon from "../Icon";
@@ -961,7 +962,7 @@ export function HomeWaitingList({ navTo }) {
     isAdmin, isOwner, bankMatch, invoices, contacts, CHART_OF_ACCOUNTS, recurringSuggestions, acceptRecurringSuggestion, dismissRecurringSuggestion,
     uploadQueue, navSeat, reloadHeldIntake, showNotification, getAccountByRole, filedDeadlines, companySettings, hasAttester, fileStatementTo, fileHeldStatementTo, intakeRows, bankAccounts,
     statementExceptions, setClarificationQueue, taxAssets, filedDeadlinesPrev, cutoffDate, estPaidThisYear, estPaidPrevYear, setArView, glCash, companyDataLoaded,
-    canSoloAttest, signoffs, signOffReadinessFor } = useERP();
+    canSoloAttest, signoffs, signOffReadinessFor, billingStateNow } = useERP();
   const [busy, setBusy] = React.useState(null);
   // C641 — for an owner with no accountant: the bank lines they can answer, as question cards.
   const soloOwner = !(navSeat ? navSeat.isReviewerSeat : true) && hasAttester === false;
@@ -1009,6 +1010,7 @@ export function HomeWaitingList({ navTo }) {
     canInvite: !!(isOwner || isAdmin),   // C706 — a view-only teammate isn't offered an invite they can't send
     cashBelowZero: companyDataLoaded && Number(glCash) < -0.005 ? Number(glCash) : null,
     statementNeeds: cockpit ? [] : statementNeedsFrom(booksState),   // C760
+    trial: cockpit ? null : trialReminder(billingStateNow),   // C771
     onboarding: onboardingChecklistVisible({ companyDataLoaded, onboardingComplete: companySettings?.onboardingComplete }),   // C733
     monthReady: companyDataLoaded ? monthReadyToSign({ canSign: !cockpit && !!canSoloAttest, months: (invoices || []).map(i => String(i && i.date || "").slice(0, 7)), signoffs: signoffs || [], currentMonth: today.slice(0, 7),
       isReady: (p) => { const r = signOffReadinessFor ? signOffReadinessFor(p) : null; return !!(r && r.ok); }, label: ownerMonthLabel, firstUnsigned: firstUnsignedMonth }) : null,   // C735   // C731 — was a line in the health block both Homes dropped
