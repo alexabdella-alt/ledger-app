@@ -1,4 +1,5 @@
 import React from "react";
+import { TRIAL_DAYS } from "../lib/billing";
 import { plainWriteError } from "../lib/plainWriteError";
 import { supabase } from "../lib/supabase";
 import { companySetupCopy, COMPANY_NAME_PLACEHOLDER } from "../lib/firstRun";
@@ -56,7 +57,7 @@ function CompanySetup({ session, onComplete, first = true, onCancel = null, onSi
       if (!haveSub) {
         const { error: sube } = await supabase.from("subscriptions").insert({
           company_id: company.id, plan: "trial", status: "trialing",
-          trial_ends_at: new Date(Date.now() + 14*24*60*60*1000).toISOString()
+          trial_ends_at: new Date(Date.now() + TRIAL_DAYS*24*60*60*1000).toISOString()   // C773 — 30 days (the DB trigger, migration 103, sets the same)
         }).select("id");
         if (sube) throw new Error(`Nearly there — the trial couldn't be started — press Create again to retry. ${plainWriteError(sube.message)}`.trim());
       }

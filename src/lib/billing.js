@@ -5,13 +5,16 @@
 // that row. Pure here: what the row means for the owner, in words, and whether the company is
 // read-only.
 //
-// ★ ENFORCEMENT IS OFF UNTIL BILLING IS SWITCHED ON. Every company was given a 14-day trial row
+// ★ ENFORCEMENT IS OFF UNTIL BILLING IS SWITCHED ON. Every company was given a trial row (14 days until C773)
 // at creation (CompanySetup) and nothing ever ended it — so the test companies' trials expired
 // months ago. Locking on that data would lock everyone the moment this shipped. `BILLING_ENFORCED`
 // stays false until Stripe is live and existing companies have been given a fair trial; until then
 // the page and the countdown show, and nothing is locked.
 // ═════════════════════════════════════════════════════════════════════════════
 export const BILLING_ENFORCED = false;
+// ★ C773 — THE FREE TRIAL IS 30 DAYS (operator, 2026-11-24: "a full 30 days, they need a month"). The
+// database trigger (migration 103) and CompanySetup use the same number; the Terms say the same.
+export const TRIAL_DAYS = 30;
 
 // The plans an owner can choose (C772 — priced and defined 2026-11-21 with the operator, checked
 // against market rates: Starter matches AI-run "done for you" tiers (~$99); Pro undercuts human-

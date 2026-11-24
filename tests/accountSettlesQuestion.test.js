@@ -57,17 +57,20 @@ describe("the detector, end to end", () => {
     id, date, vendor: "Sabine Kitchen Equipment", amount: 4625, type: "expense",
     gl_code: "7100", gl_name: "Miscellaneous Expense", status: "booked", source: "universal_upload",
   });
-  const today = "2026-08-30";
+  // ★ The detector's signature is (invoices, recurring, now). These tests passed `{ today }` as the
+  // SECOND argument, so `now` was the real clock — and the "still fires" test began failing on its
+  // own once the calendar moved 90+ days past its August fixture (found 2026-11-24). Pinned.
+  const now = new Date("2026-08-30T12:00:00");
 
   it("★ a brand-new company's FIRST rent raises nothing", () => {
-    const out = runAnomalyDetection([rent("r1", "2026-08-01")], { today });
+    const out = runAnomalyDetection([rent("r1", "2026-08-01")], [], now);
     expect(out.filter(a => a.type === "large_transaction")).toEqual([]);
   });
 
   it("★ and the same detector STILL fires on a genuine large purchase", () => {
     // Without this, "rent no longer flags" is equally satisfied by switching the
     // detector off — which is the way a wrong fix looks better than a right one.
-    const out = runAnomalyDetection([gear("g1", "2026-08-21")], { today });
+    const out = runAnomalyDetection([gear("g1", "2026-08-21")], [], now);
     expect(out.filter(a => a.type === "large_transaction").length).toBe(1);
   });
 });
