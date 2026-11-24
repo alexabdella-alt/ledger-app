@@ -146,6 +146,10 @@ What each applied migration's checks returned, verbatim as recorded at the time 
 > **RULE: every migration application gets its date recorded on this line, in the same docs commit that closes the session.** The repo records migration FILES; nothing in it records their APPLICATION, and there is no `supabase_migrations.schema_migrations` table to ask (see below — deliberately). So a file's presence proves only that it was written. Without this line every fresh session re-derives the answer, guesses wrong, and re-raises a migration as "still pending" that went live days ago. *(Cost already paid: `060` was flagged unapplied twice after it was live.)*
 
 
+## `103_trial_30_days` — APPLIED & VERIFIED 2026-11-24 17:12 UTC (C773)
+
+Applied with `supabase db query --linked -f` on the operator's explicit go-ahead ("yes apply 103"), file sha256 `6c30f813a6e24e18…`. The function is 102's `start_company_trial()` verbatim with one line changed (diffed mechanically; a test pins it). One rolled-back probe (`supabase/verify/103_trial_30_days.sql`): **before** — "FAIL - a new company's trial is 14 days"; **after** — "PASS - a new company gets a 30-day trial". Existing rows untouched; existing companies get their fresh 30 days at billing launch, as a separate data step.
+
 ## `102_subscriptions_stripe_only` — APPLIED & VERIFIED 2026-11-21 22:18 UTC (C771)
 
 Applied with `supabase db query --linked -f` on the operator's explicit go-ahead ("yes apply 102"), file sha256 `15e7517f56afdceb…`. Three checks from `supabase/verify/102_subscriptions_stripe_only.sql`, run one statement each:
