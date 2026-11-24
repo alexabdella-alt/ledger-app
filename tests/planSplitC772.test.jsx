@@ -38,6 +38,7 @@ describe("C772 — the page", () => {
     expect((h.match(/data-billing-includes/g) || []).length).toBe(2);
     expect(h).toContain("A monthly review and close of your books by our accounting team");
     expect(h).toContain("For businesses spending up to $25,000 a month.");
+    expect(h).toContain('href="mailto:alexabdella@gmail.com?subject=Quote%20for%20a%20larger%20business"');   // C774
     expect(h).toContain("Not included in either plan");
   });
 });

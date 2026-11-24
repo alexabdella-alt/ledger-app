@@ -25,7 +25,7 @@ export const TRIAL_DAYS = 30;
 // only when something can't be answered automatically — no monthly review. Pro is the monthly review
 // and close. A $99 client who also got a monthly human check would cost more time than it pays.
 export const PLAN_SPEND_LIMIT = 25000;            // monthly business spending these prices cover
-export const QUOTE_CONTACT_EMAIL = "";            // set when there's an inbox for quotes; until then the line has no link
+export const QUOTE_CONTACT_EMAIL = "alexabdella@gmail.com";   // C774 — the operator's choice (2026-11-24), knowing it is public on the plans page and in the repo
 export const PLANS = [
   { id: "starter", name: "Starter", price: 99,
     blurb: "Your books kept for you, automatically.",

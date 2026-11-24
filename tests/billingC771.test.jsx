@@ -86,6 +86,8 @@ describe("C771 — the server's pure part", () => {
   it("★★★ checkout carries the company, keeps a trial with 48h+ left, and only returns to our own sites", () => {
     const f = checkoutFields({ priceId: "price_s", customerId: "cus_1", companyId: "co1", returnUrl: "https://www.shadowcfo.org", trialEndsAt: days(5), now: NOW });
     expect(f).toMatchObject({ mode: "subscription", client_reference_id: "co1", "subscription_data[metadata][company_id]": "co1", success_url: "https://www.shadowcfo.org/?billing=success" });
+    // C774 — Stripe Tax on, with the billing address collected and saved on the customer
+    expect(f).toMatchObject({ "automatic_tax[enabled]": "true", billing_address_collection: "required", "customer_update[address]": "auto" });
     expect(f["subscription_data[trial_end]"]).toBe(String(Math.floor(Date.parse(days(5)) / 1000)));
     expect(checkoutFields({ priceId: "p", customerId: "c", companyId: "co", returnUrl: "x", trialEndsAt: days(1), now: NOW })["subscription_data[trial_end]"]).toBeUndefined();
     expect(safeReturnUrl("https://evil.example.com")).toBe("https://www.shadowcfo.org");

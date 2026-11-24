@@ -83,6 +83,13 @@ export function checkoutFields({ priceId, customerId, companyId, returnUrl, tria
     success_url: `${base}/?billing=success`,
     cancel_url: `${base}/?billing=cancel`,
     allow_promotion_codes: "true",
+    // ★ C774 — STRIPE TAX: work out sales tax from the customer's billing address and add it on top
+    // (prices are tax-exclusive). It charges nothing until a registration exists (e.g. Texas), then the
+    // right amount there. The address is collected at checkout and saved on the customer.
+    "automatic_tax[enabled]": "true",
+    billing_address_collection: "required",
+    "customer_update[address]": "auto",
+    "customer_update[name]": "auto",
   };
   const t = Date.parse(trialEndsAt || "");
   if (Number.isFinite(t) && t - now.getTime() > 48 * 3600 * 1000) f["subscription_data[trial_end]"] = String(Math.floor(t / 1000));
