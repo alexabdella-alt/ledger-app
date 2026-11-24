@@ -15,9 +15,11 @@ const bill = (id, date, amount, vendor = "Hill Country Milling Co.") => ({
   id, date, vendor, amount, type: "expense", status: "booked",
   gl_code: "5010", gl_name: "Food Cost", source: "universal_upload",
 });
-const today = "2026-08-31";
+// C773 — the detector's signature is (invoices, recurring, now); `{ today }` in the 2nd slot left `now`
+// on the real clock (the shape that broke accountSettlesQuestion). Pinned to the fixture's date.
+const now = new Date("2026-08-31T12:00:00");
 const dups = (invoices) =>
-  runAnomalyDetection(invoices, { today }).filter(a => a.type === "duplicate_payment");
+  runAnomalyDetection(invoices, [], now).filter(a => a.type === "duplicate_payment");
 
 describe("one pair, one card", () => {
   it("★ NEAR-EQUAL amounts emit exactly ONE card — the live bug", () => {
