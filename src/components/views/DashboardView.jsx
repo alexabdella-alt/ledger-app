@@ -9,6 +9,7 @@ import { homeWaitingList, waitingHeadline, ownerNeedHeadline, WAIT, monthReadyTo
 import { useCompletenessState, statementNeedsFrom } from "./MonthStatus";
 import { trialReminder } from "../../lib/billing";
 import ReceiptsToAdd from "../ReceiptsToAdd";
+import PersonalSort from "../PersonalSort";   // C779
 import AddToHomeScreen from "../AddToHomeScreen";
 import Icon from "../Icon";
 import { firstUnsignedMonth } from "../../lib/workbench";
@@ -765,6 +766,8 @@ export default function DashboardView() {
 
               {/* ★ C755 — receipts still to add: purchases told to the assistant, and recent spending of $75+ */}
               <ReceiptsToAdd />
+              {/* ★ C779 — "Were these personal?": a mixed account sorted in one tap a week */}
+              <PersonalSort />
 
               {/* ★ C770 — on a phone, until it's installed or dismissed: how to put Shadow on the home screen */}
               <AddToHomeScreen />

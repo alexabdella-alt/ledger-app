@@ -38,3 +38,16 @@ export function lastYearBalanceLine(est = null, year, { cutoffDate = null } = {}
     ? ` Your books start on ${cutoffDate}, so this covers only part of ${year} — your tax return will have the full figure.` : "";
   return { amount: Number(est.owed), text: `For ${year}: about ${fmtApprox(est.owed)} of tax is still to pay by April 15${paid}.${partial}` };
 }
+
+// ★ C780 — "PUT ABOUT $X OF IT ASIDE": the moment money comes in is when a solo owner can still keep
+// some back. The figure is what THIS payment adds to the year's estimated tax — the same estimate
+// with and without it (lib/tax.js taxEstimate), never a flat percentage — so a year whose costs
+// still exceed its income honestly says nothing is needed yet. Pure.
+export function paymentSetAsideLine({ before = null, after = null, amount = 0 } = {}) {
+  const amt = Number(amount) || 0;
+  if (!(amt > 0) || !before || !after) return null;
+  const extra = Math.max(0, (Number(after.total) || 0) - (Number(before.total) || 0));
+  if (extra < 1) return { amount: 0, text: "No tax to set aside from this one yet, going by this year's books so far." };
+  const pct = Math.min(100, Math.round((extra / amt) * 100));
+  return { amount: extra, text: `Put about ${fmtApprox(extra)} of it aside for taxes — roughly what it adds to this year's tax bill (about ${pct}%).` };
+}
