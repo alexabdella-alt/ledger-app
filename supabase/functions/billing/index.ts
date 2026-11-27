@@ -80,7 +80,7 @@ serve(async (req) => {
         if (sub) await admin.from("subscriptions").update({ stripe_customer_id: customerId, updated_at: new Date().toISOString() }).eq("id", sub.id);
         else { const { data: ins } = await admin.from("subscriptions").insert({ company_id: companyId, plan: "trial", status: "trialing", stripe_customer_id: customerId }).select("*").single(); sub = ins; }
       }
-      const session = await stripe("checkout/sessions", checkoutFields({ priceId, customerId, companyId, returnUrl, trialEndsAt: sub && sub.status === "trialing" ? sub.trial_ends_at : null }));
+      const session = await stripe("checkout/sessions", checkoutFields({ priceId, customerId, companyId, returnUrl, trialEndsAt: sub && sub.status === "trialing" ? sub.trial_ends_at : null, automaticTax: Deno.env.get("STRIPE_AUTOMATIC_TAX") === "on" }));
       return json(200, { url: session.url });
     }
     return json(400, { error: "bad_action" });

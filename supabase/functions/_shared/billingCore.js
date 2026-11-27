@@ -71,7 +71,7 @@ export function safeReturnUrl(url) {
 
 // Checkout Session fields (Stripe's REST API takes form encoding). A trial the company still has is
 // carried over — Stripe needs a trial end at least 48 hours away, so a shorter remainder is dropped.
-export function checkoutFields({ priceId, customerId, companyId, returnUrl, trialEndsAt = null, now = new Date() }) {
+export function checkoutFields({ priceId, customerId, companyId, returnUrl, trialEndsAt = null, now = new Date(), automaticTax = false }) {
   const base = safeReturnUrl(returnUrl);
   const f = {
     mode: "subscription",
@@ -83,14 +83,16 @@ export function checkoutFields({ priceId, customerId, companyId, returnUrl, tria
     success_url: `${base}/?billing=success`,
     cancel_url: `${base}/?billing=cancel`,
     allow_promotion_codes: "true",
-    // ★ C774 — STRIPE TAX: work out sales tax from the customer's billing address and add it on top
-    // (prices are tax-exclusive). It charges nothing until a registration exists (e.g. Texas), then the
-    // right amount there. The address is collected at checkout and saved on the customer.
-    "automatic_tax[enabled]": "true",
+    // ★ C774 — the billing address is collected at checkout and saved on the customer, so it is already
+    // there the day sales tax is switched on.
     billing_address_collection: "required",
     "customer_update[address]": "auto",
     "customer_update[name]": "auto",
   };
+  // ★ C775 — STRIPE TAX IS OFF UNTIL THE OPERATOR SWITCHES IT ON (secret STRIPE_AUTOMATIC_TAX=on, after
+  // Stripe Tax is set up with a registration). Asking for automatic tax before Stripe Tax is activated
+  // makes Stripe refuse to open checkout at all — a broken Subscribe button, not a missing tax line.
+  if (automaticTax) f["automatic_tax[enabled]"] = "true";
   const t = Date.parse(trialEndsAt || "");
   if (Number.isFinite(t) && t - now.getTime() > 48 * 3600 * 1000) f["subscription_data[trial_end]"] = String(Math.floor(t / 1000));
   return f;
