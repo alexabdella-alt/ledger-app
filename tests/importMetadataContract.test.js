@@ -105,8 +105,8 @@ describe("★★★ every key read off import_metadata has a writer", () => {
         const before = s.text.slice(Math.max(0, m.index - 300), m.index);
         // Either it is a checked write, or it is the pure builder in signedPeriod.js that
         // hands its object to a caller rather than to the database.
-        // C755 — toldPurchase.js is the same kind of pure builder: persistJournalEntry's checked stamp carries its keys.
-        const ok = /checkedRowUpdate\(\{|checkedIdsUpdate\(\{/.test(before) || s.file.endsWith("signedPeriod.js") || s.file.endsWith("toldPurchase.js");
+        // C755 — toldPurchase.js is the same kind of pure builder: persistJournalEntry's checked stamp carries its keys. C776 — toldIncome.js too (`told`).
+        const ok = /checkedRowUpdate\(\{|checkedIdsUpdate\(\{/.test(before) || s.file.endsWith("signedPeriod.js") || s.file.endsWith("toldPurchase.js") || s.file.endsWith("toldIncome.js");
         expect(ok, `unchecked import_metadata write in ${s.file}`).toBe(true);
       }
     }

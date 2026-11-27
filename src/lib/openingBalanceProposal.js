@@ -243,17 +243,18 @@ export function markAlreadyBooked(parsedLines = [], existingInvoices = [], { off
   // purchase that no line has claimed yet → it IS that purchase. Closest date wins; each told
   // purchase claims one line.
   const told = (existingInvoices || []).filter((inv) => inv && isToldPurchase(inv) && !inv.deleted_at && inv.status !== "voided" && inv.status !== "deleted"
-    && (!offsetCode || String(inv.secondary_gl_code) === String(offsetCode)) && bookedLineDirection(inv, offsetCode) === "out");
+    && (!offsetCode || String(inv.secondary_gl_code) === String(offsetCode)));   // C776 — money received told to the assistant too (money in)
   if (!told.length) return first;
-  const pool = told.map((inv) => ({ inv, key: bankTxnKey({ date: inv.date, amount: inv.amount, direction: "out" }) }))
+  const pool = told.map((inv) => ({ inv, dir: bookedLineDirection(inv, offsetCode), key: bankTxnKey({ date: inv.date, amount: inv.amount, direction: bookedLineDirection(inv, offsetCode) }) }))
     .filter((c) => (seen.get(c.key) || 0) > 0);   // not already claimed by an exact match above
   // Every (line, told purchase) pair that could be the same money, closest dates first; each side
   // is claimed once. (Greedy by line order let the first line in the file take a purchase that a
   // later, closer-dated line was the real match for.)
   const pairs = [];
   first.forEach((t, li) => {
-    if (t.already_booked || bankLineDirection(t) !== "out") return;
+    if (t.already_booked) return;
     pool.forEach((c, ci) => {
+      if (bankLineDirection(t) !== c.dir) return;
       if (r2(Math.abs(Number(t.amount) || 0)) !== r2(Math.abs(Number(c.inv.amount) || 0))) return;
       const gap = daysBetween(c.inv.date, t.date);
       if (gap == null || gap < -TOLD_MATCH_BEFORE_DAYS || gap > TOLD_MATCH_AFTER_DAYS) return;

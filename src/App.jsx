@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { holdNotProfitAndLoss, isCardAccount } from "./lib/bankNotPL";
-import { paidFromCopy, payFromOptions } from "./lib/payFrom";
+import { paidFromCopy, payFromOptions, receivedIntoOptions, receivedIntoCopy } from "./lib/payFrom";
 import { ownerAccountName } from "./lib/categoryLabel";   // C710
 import { OWNER_ANSWERABLE_REASONS } from "./lib/statementQuestions";   // C713
 import { entryTotalOf } from "./lib/txnPresent";   // C712
@@ -31,7 +31,8 @@ import { DIRECTORY_SEED } from "./lib/vendorDirectory";
 import { priorOutstandingCandidates, stillOutstandingSigned, candidatesToOutstandingBooks } from "./lib/outstandingItems";
 import { owedAccount, reconBooksBalance, cashCarriedIntoPeriod, reconcileDifference, canCompleteReconciliation, statementBalanceVerified, supersedableOpenReconciliations } from "./lib/reconcile";
 import { isAllowedAIAction, isMutatingAIAction, isDestructiveAIAction, AI_CAPABILITIES } from "./lib/aiCapabilities";
-import { routeAIActions, buildPendingConfirmation, resolveActionTargets, resolvePayFrom } from "./lib/aiActionGate";
+import { routeAIActions, buildPendingConfirmation, resolveActionTargets, resolvePayFrom, resolveIncome } from "./lib/aiActionGate";
+import { checkToldIncome, buildToldIncome } from "./lib/toldIncome";   // C776
 import { findDuplicate, detectRecurringPatterns, runAnomalyDetection, perEntry } from "./lib/insights";
 import { multiLineMetaPatch } from "./lib/entryMetaStamp";
 import { reconcileAnomalies, anomalyInsertRow, openingDiscrepancyAnomaly, openingNotesSettledBy, openHighAnomaliesInPeriod, applyPatternSuppression, anomaliesExpiredBySignoff, anomaliesReopenedByRevoke, ANOMALY_RESOLUTION, ATTESTED_NOTE, durableRefs } from "./lib/anomalies";
@@ -9174,6 +9175,17 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
   // Reload the persisted conversation whenever the company changes.
   useEffect(() => { if (currentCompany?.id) loadChatHistory(currentCompany.id); /* eslint-disable-next-line */ }, [currentCompany?.id]);
 
+  // C776 — what a record_income needs to resolve: where money can land, the open invoices it could
+  // pay, and the default income account (used only when the model gave no category).
+  const incomeCtx = () => {
+    const arCode = rc("accounts_receivable");
+    const incomeAcct = getAccountByRole?.("service_revenue") || (CHART_OF_ACCOUNTS || []).find((a) => a && /^4/.test(String(a.code)) && a.active !== false);
+    return {
+      receivedIntoOptions: receivedIntoOptions({ bankAccounts: bankAccounts || [], getAccountByRole }),
+      openItems: matchableOpenItems(invoicesRef.current || invoices, { arCode, apCode: null, accruedCode: null }),
+      arCode, defaultIncomeCode: incomeAcct ? String(incomeAcct.code) : null,
+    };
+  };
   // ── DESTRUCTIVE-ACTION EXECUTOR (CR-9 / O81 part 2) ──────────────────────────
   // Runs ONE destructive AI action (void / delete / recode / retag / reverse /
   // delete-rule) through the verified-write path. Called ONLY after the human clicks
@@ -9333,6 +9345,36 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             invoicesRef.current = [inv, ...(invoicesRef.current || [])];
             const jeId = await bookToDb(inv);
             if (jeId) summary.push(`Recorded ${fmtMoney(inv.amount)} at ${inv.vendor} as ${inv.gl_name} — ${paidFromCopy(from)}. Add the receipt whenever you have it: Home → Receipts to add`);
+            else failures.push(`record ${inv.vendor}`);
+          }
+        }
+      }
+    }
+    // ★ C776 — money the owner says they received (confirmed first). The card fixed what it is at
+    // staging: a deposit already in the books (nothing recorded), an open invoice it pays (recorded
+    // as collected, never as new income), or new income into the account the owner named.
+    if (action.type === "record_income") {
+      const ctx = incomeCtx();
+      const r = resolveIncome(action, { ...ctx, invoices: invoicesRef.current || invoices, today: todayLocal() });
+      if (r.existing) summary.push(`${r.existing.vendor} · ${fmtMoney(r.existing.amount)} was already in your books — nothing was recorded twice`);
+      else if (!r.into) summary.push(`Couldn't tell which account "${action.received_into}" is — nothing was recorded`);
+      else if (action.invoice_id != null && !r.openInvoice) summary.push(`That invoice isn't open any more — nothing was recorded`);
+      else if (r.openInvoice) {
+        const ok = await markBillPaid(r.openInvoice.id, { side: "ar", cashCode: r.into.code, cashName: r.into.name, paidDate: action.date || undefined });
+        if (ok) summary.push(`Recorded ${r.openInvoice.vendor}'s invoice as paid — ${receivedIntoCopy(r.into)}`);
+        else failures.push(`record ${r.openInvoice.vendor}'s payment`);
+      } else {
+        const check = checkToldIncome(action, { chart: CHART_OF_ACCOUNTS, today: todayLocal(), defaultIncomeCode: ctx.defaultIncomeCode });
+        if (!check.ok) summary.push(check.reason.replace("nothing would be recorded", "nothing was recorded"));
+        else if (!assertBookable(check.date)) failures.push(`record ${check.customer} (that date is before your books start)`);
+        else {
+          const inv = buildToldIncome(action, { chart: CHART_OF_ACCOUNTS, receivedInto: r.into, today: todayLocal(), defaultIncomeCode: ctx.defaultIncomeCode, id: Date.now() + Math.random(), bookedAt: new Date().toISOString() });
+          if (!inv) failures.push(`record ${check.customer}`);
+          else {
+            setInvoices((prev) => [inv, ...prev]);
+            invoicesRef.current = [inv, ...(invoicesRef.current || [])];
+            const jeId = await bookToDb(inv);
+            if (jeId) summary.push(`Recorded ${fmtMoney(inv.amount)} from ${inv.vendor} as ${inv.gl_name} — ${receivedIntoCopy(r.into)}`);
             else failures.push(`record ${inv.vendor}`);
           }
         }
@@ -9671,7 +9713,8 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
       // (confirmAIActions). Not staged when the batch was blocked (member/ambiguous/bulk).
       const staged = (!gateBlocked && destructiveActions.length)
         ? buildPendingConfirmation(destructiveActions, { invoices, contracts, rules, contactsList: contacts, apCode: getAccountByRole?.("accounts_payable")?.code, chart: CHART_OF_ACCOUNTS,
-            payFromOptions: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }), today: todayLocal() })   // C687; C755 today
+            payFromOptions: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }), today: todayLocal(),   // C687; C755 today
+            ...incomeCtx() })   // C776
         : null;
       if (staged) { setPendingAIActions({ ...staged, id: Date.now() + 2 }); logAI("ai_actions_staged", `Staged ${staged.actions.length} destructive action(s) for confirmation: ${staged.items.map(it => it.type).join(", ")}`); }
 

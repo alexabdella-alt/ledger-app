@@ -28,6 +28,7 @@ import { glIsRevenue, glIsExpense, entryBaseOf } from "./gl.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
 import { existingToldMatch, toldPurchaseDescription, checkToldPurchase } from "./toldPurchase.js";   // C755
+import { existingIncomeMatch, openInvoiceMatch, toldIncomeDescription, checkToldIncome, pickReceivedInto } from "./toldIncome.js";   // C776
 
 const money = (n) => (Number.isFinite(Number(n)) ? fmtMoney(n) : "");   // canonical magnitude cents
 const norm = (s) => String(s || "").toLowerCase();
@@ -200,6 +201,7 @@ const VERB = {
   pause_recurring: "pause",
   record_payment: "record a payment for",   // C676
   record_purchase: "record a purchase at",   // C755
+  record_income: "record money received from",   // C776
 };
 
 // Build the confirmation proposal for a destructive action: a plain-English title,
@@ -246,6 +248,17 @@ export function describeDestructiveAction(action, ctx = {}) {
       description: toldPurchaseDescription(a, { chart: chart || [], payFrom, existing, today: ctx.today || "" }) };
   }
 
+  // ★ C776 — money the owner says they received: one target; the sentence reads what WILL be
+  // written (the deposit already in the books, the invoice it pays, or the new income and where it
+  // landed). The match and the account are fixed at staging (`buildPendingConfirmation`).
+  if (a.type === "record_income") {
+    const r = resolveIncome(a, ctx);
+    const label = `${a.customer || a.vendor || "A payment"}${Number(a.amount) > 0 ? ` · ${money(a.amount)}` : ""}`;
+    const c = checkToldIncome(a, { chart: chart || [], today: ctx.today || "", defaultIncomeCode: ctx.defaultIncomeCode || null });
+    return { type: a.type, verb, count: r.existing ? 0 : (r.openInvoice || c.ok) && r.into ? 1 : 0, targets: [{ label }],
+      description: toldIncomeDescription(a, { chart: chart || [], receivedInto: r.into, existing: r.existing, openInvoice: r.openInvoice, today: ctx.today || "", defaultIncomeCode: ctx.defaultIncomeCode || null }) };
+  }
+
   if (a.type === "delete_rule") {
     const label = a.vendor || "this vendor";
     return { type: a.type, verb, count: 1, targets: [{ label }], description: `Delete the automatic coding rule for ${label}.` };
@@ -286,6 +299,23 @@ export function describeDestructiveAction(action, ctx = {}) {
   return { type: a.type, verb, count: n, targets, description };
 }
 
+// C776 — what a record_income resolves to, from the action as staged (ids/keys fixed) or, before
+// staging, from the data: a deposit already booked, an open invoice it pays, and where it landed.
+export function resolveIncome(a = {}, ctx = {}) {
+  const live = ctx.invoices || [];
+  const opts = ctx.receivedIntoOptions || [];
+  const existing = a.existing_entry_id !== undefined
+    ? (a.existing_entry_id == null ? null : (perEntry(live).find((e) => entryBaseOf(e) === String(a.existing_entry_id)) || null))
+    : existingIncomeMatch(a, live, { today: ctx.today || "" });
+  const openInvoice = a.invoice_id !== undefined
+    ? (a.invoice_id == null ? null : ((ctx.openItems || []).find((i) => String(i.id) === String(a.invoice_id)) || null))
+    : openInvoiceMatch(a, ctx.openItems || [], { arCode: ctx.arCode ?? null });
+  const into = a.received_into_key !== undefined
+    ? (a.received_into_key == null ? null : (opts.find((o) => o.key === a.received_into_key) || null))
+    : pickReceivedInto(opts, a.received_into);
+  return { existing, openInvoice, into };
+}
+
 // Build the full pending-confirmation payload from the destructive actions to stage.
 export function buildPendingConfirmation(stageActions = [], ctx = {}) {
   // C687 — a payment carries the account its card names, so Confirm posts exactly there
@@ -298,6 +328,12 @@ export function buildPendingConfirmation(stageActions = [], ctx = {}) {
       const opts = ctx.payFromOptions || null;
       const from = opts ? (a.paid_from != null && String(a.paid_from).trim() ? resolvePayFrom(a, opts) : (opts[0] || null)) : null;
       return { ...a, existing_entry_id: existing ? entryBaseOf(existing) : null, pay_from_key: existing ? null : (from ? from.key : null), date: a.date || ctx.today || "" };
+    }
+    // C776 — the card and Confirm do the same thing: the match and the account are fixed here.
+    if (a && a.type === "record_income") {
+      const r = resolveIncome(a, ctx);
+      return { ...a, existing_entry_id: r.existing ? entryBaseOf(r.existing) : null, invoice_id: r.openInvoice ? r.openInvoice.id : null,
+        received_into_key: r.into ? r.into.key : null, date: a.date || ctx.today || "" };
     }
     return a;
   });

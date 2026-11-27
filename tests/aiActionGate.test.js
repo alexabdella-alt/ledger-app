@@ -18,10 +18,10 @@ import {
 // ════════════════════════════════════════════════════════════════════════════
 
 // C676 — record_payment joins: it posts a payment entry, so the owner confirms it first.
-const DESTRUCTIVE = ["recode", "retag_project", "delete_invoice", "void_invoice", "reverse_entry", "delete_contract", "delete_rule", "record_payment", "record_purchase"];   // C755 — a told purchase posts an entry, so it is confirmed first
+const DESTRUCTIVE = ["recode", "retag_project", "delete_invoice", "void_invoice", "reverse_entry", "delete_contract", "delete_rule", "record_payment", "record_purchase", "record_income"];   // C755 — a told purchase posts an entry, so it is confirmed first; C776 — so does money received
 
 describe("classification is complete and correct", () => {
-  it("the destructive set is exactly the 9 mandated actions", () => {
+  it("the destructive set is exactly the 10 mandated actions", () => {
     expect([...AI_DESTRUCTIVE_ACTIONS].sort()).toEqual([...DESTRUCTIVE].sort());
   });
   it("every allowed action is classified; no destructive action is ever 'safe'", () => {
