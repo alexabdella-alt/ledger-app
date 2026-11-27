@@ -117,7 +117,7 @@ describe("C583 — the first-run checklist and the upload box", () => {
     expect(CHECKLIST_COPY.biz.hint).toMatch(/right categories/);
     // C586 — the bank step is optional now, and says the account already exists
     expect(CHECKLIST_COPY.bank.hint).toMatch(/We've set one up for you/);
-    expect(CHECKLIST_COPY.bank.hint).toMatch(/more than one account or a credit card/);
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/personal account or card you also use for it — then its money counts here/);   // C778
     expect(home).toMatch(/\.\.\.CHECKLIST_COPY\.bank, go:\(\)=>goToSection\("settings","bank-accounts-section"\), optional:true \}/);
     expect(home).toMatch(/\{ONBOARDING_OPTIONAL_STEPS\.map\(k => renderStep\(stepByKey\[k\]\)\)\}/);
     expect(BUSINESS_MODAL_INTRO).toMatch(/change them later in Settings/);

@@ -9356,8 +9356,15 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
     if (action.type === "record_income") {
       const ctx = incomeCtx();
       const r = resolveIncome(action, { ...ctx, invoices: invoicesRef.current || invoices, today: todayLocal() });
+      // ★ C778 — the owner said yes, they use that account for the business too: add it now, so the
+      // money lands in an account the books track (and its statements will reconcile).
+      if (!r.existing && r.into && r.into.create) {
+        const acct = await createBankAccountInline({ name: r.into.name, type: "checking" });
+        r.into = acct ? { key: `acct:${acct.id}`, label: acct.name, name: acct.name, code: String(acct.gl_code), added: true } : null;
+        if (!acct) failures.push(`add ${action.track_account || "that account"} to your accounts`);
+      }
       if (r.existing) summary.push(`${r.existing.vendor} · ${fmtMoney(r.existing.amount)} was already in your books — nothing was recorded twice`);
-      else if (!r.into) summary.push(`Couldn't tell which account "${action.received_into}" is — nothing was recorded`);
+      else if (!r.into) { if (!failures.length) summary.push(`Couldn't tell which account "${action.received_into}" is — nothing was recorded`); }
       else if (action.invoice_id != null && !r.openInvoice) summary.push(`That invoice isn't open any more — nothing was recorded`);
       else if (r.openInvoice) {
         const ok = await markBillPaid(r.openInvoice.id, { side: "ar", cashCode: r.into.code, cashName: r.into.name, paidDate: action.date || undefined });
@@ -9374,7 +9381,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
             setInvoices((prev) => [inv, ...prev]);
             invoicesRef.current = [inv, ...(invoicesRef.current || [])];
             const jeId = await bookToDb(inv);
-            if (jeId) summary.push(`Recorded ${fmtMoney(inv.amount)} from ${inv.vendor} as ${inv.gl_name} — ${receivedIntoCopy(r.into)}`);
+            if (jeId) summary.push(`Recorded ${fmtMoney(inv.amount)} from ${inv.vendor} as ${inv.gl_name} — ${receivedIntoCopy(r.into)}${r.into.added ? ` (added to your accounts — upload its statements on Home so they're checked too)` : ""}`);
             else failures.push(`record ${inv.vendor}`);
           }
         }
@@ -9472,6 +9479,7 @@ ${JSON.stringify(remainReceivables.map(i => ({ id: i.id, vendor: i.vendor, descr
         taxProfile: filedDeadlines, taxProfilePrev: filedDeadlinesPrev, cutoffDate, estPaidThisYear: estPaidThisYear || 0, estPaidPrevYear,   // C690, C693, C698, C704
         cardsOwed: cardBalanceOwed(invoices, bankAccounts),   // C672 — what's owed on cards, now that it isn't hidden in cash
         payFromLabels: payFromOptions({ bankAccounts: bankAccounts || [], getAccountByRole, chart: CHART_OF_ACCOUNTS, legalForm: companySettings?.legalForm || "" }).map(o => o.label),   // C676
+        trackedAccountLabels: (bankAccounts || []).filter(b => b && String(b.name || "").trim()).map(b => b.type === "credit_card" ? `${b.name} (card)` : b.name),   // C778
         businessType: companySettings.businessType,
         legalForm: companySettings.legalForm || null,   // C559 — the tax tool names this company's deadlines
         // Function-calling: give the AI direct, RLS-scoped database access via tools.

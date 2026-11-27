@@ -226,7 +226,7 @@ async function classifyIntent(userMessage, recentHistory) {
   }
 }
 
-async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, cardsOwed = 0, payFromLabels = [], taxAssets = null, taxProfile = null, taxProfilePrev = null, cutoffDate = null, estPaidThisYear = 0, estPaidPrevYear = 0, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null, legalForm = null }) {
+async function runAIBrain({ userMessage, invoices, rules, projects, chatHistory, memory, contacts, chartOfAccounts, clientProfile, cashBalance, cardsOwed = 0, payFromLabels = [], trackedAccountLabels = [], taxAssets = null, taxProfile = null, taxProfilePrev = null, cutoffDate = null, estPaidThisYear = 0, estPaidPrevYear = 0, anomalies, businessType, supabase, companyId, getAccountByRole, recurring, onToolCall, aliasIndex = null, legalForm = null }) {
   // ── 1. Truncate history to last 10 turns (5 user + 5 assistant) ───────────────
   const truncatedHistory = chatHistory.slice(-10);
 
@@ -300,8 +300,13 @@ ${contacts.map(c =>
     const ledgerSection = useTools ? "" : legacyLedgerSection;
     const coaList = (chartOfAccounts || DEFAULT_CHART_OF_ACCOUNTS).map(a => `${a.code} - ${a.name} (${a.category})`).join("\n");
     const projectsList = [...PROJECTS, ...projects].filter((v, i, a) => a.indexOf(v) === i).join(", ");
+    // C778 — the accounts whose statements the books track, so the assistant knows whether "my
+    // personal account" is one of them (and asks once if it isn't).
+    const tracked = (trackedAccountLabels || []).filter(Boolean);
     return `Chart of Accounts:
 ${coaList}
+
+ACCOUNTS THE BOOKS TRACK (their statements come in here): ${tracked.length ? tracked.join("; ") : "none named yet"}
 
 Available Projects: ${projectsList}
 ${businessType ? `\nBUSINESS TYPE: ${businessType}. Tailor your guidance to this kind of business (e.g. SaaS → MRR/runway; Consulting → AR/collections; Restaurant/Retail → COGS/margins).` : ""}

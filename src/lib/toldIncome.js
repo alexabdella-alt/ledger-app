@@ -63,6 +63,17 @@ export function pickReceivedInto(options = [], said = "") {
   return pickPayFrom(opts.filter((o) => o.key !== PERSONAL), t);
 }
 
+// ★ C778 — "DO YOU USE THAT ACCOUNT FOR THE BUSINESS TOO?" — YES. The owner agreed to track the
+// personal account the money landed in: an account the books already track under that name is that
+// account; otherwise it is one to ADD (`create: true`), and money landing there is cash on the books.
+export const NEW_ACCOUNT_KEY = "new:";
+export function trackedAccountFor(options = [], name = "") {
+  const n = String(name || "").trim();
+  if (!n) return null;
+  const same = (options || []).find((o) => o.key !== PERSONAL && String(o.name || o.label || "").trim().toLowerCase() === n.toLowerCase());
+  return same || { key: NEW_ACCOUNT_KEY + n, label: n, name: n, code: null, create: true };
+}
+
 // A deposit already in the books that IS this money (the statement came first): income, the same
 // amount to the cent, the same customer, dated within the window. Exactly one, or null.
 export function existingIncomeMatch(a = {}, entries = [], { today = "" } = {}) {
@@ -90,7 +101,8 @@ export function openInvoiceMatch(a = {}, openItems = [], { arCode = null } = {})
   return hits.length === 1 ? hits[0] : null;
 }
 
-const intoPhrase = (into) => (!into ? "" : into.key === PERSONAL ? " · into your personal account (counted as money you took out)" : ` · into ${into.label}`);
+const intoPhrase = (into) => (!into ? "" : into.key === PERSONAL ? " · into your personal account (counted as money you took out)"
+  : into.create ? ` · into ${into.label} (added to your accounts, so its money counts in your books)` : ` · into ${into.label}`);
 
 // The confirm card's sentence — read from what WILL be written (§9: describe from the record).
 export function toldIncomeDescription(a = {}, { chart = [], receivedInto, existing = null, openInvoice = null, today = "", defaultIncomeCode = null } = {}) {

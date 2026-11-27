@@ -28,7 +28,7 @@ import { glIsRevenue, glIsExpense, entryBaseOf } from "./gl.js";
 import { isDestructiveAIAction } from "./aiCapabilities";
 import { fmtMoney } from "./format";
 import { existingToldMatch, toldPurchaseDescription, checkToldPurchase } from "./toldPurchase.js";   // C755
-import { existingIncomeMatch, openInvoiceMatch, toldIncomeDescription, checkToldIncome, pickReceivedInto } from "./toldIncome.js";   // C776
+import { existingIncomeMatch, openInvoiceMatch, toldIncomeDescription, checkToldIncome, pickReceivedInto, trackedAccountFor, NEW_ACCOUNT_KEY } from "./toldIncome.js";   // C776, C778
 
 const money = (n) => (Number.isFinite(Number(n)) ? fmtMoney(n) : "");   // canonical magnitude cents
 const norm = (s) => String(s || "").toLowerCase();
@@ -310,9 +310,12 @@ export function resolveIncome(a = {}, ctx = {}) {
   const openInvoice = a.invoice_id !== undefined
     ? (a.invoice_id == null ? null : ((ctx.openItems || []).find((i) => String(i.id) === String(a.invoice_id)) || null))
     : openInvoiceMatch(a, ctx.openItems || [], { arCode: ctx.arCode ?? null });
+  // C778 — `track_account`: the owner said they use that account for the business too.
   const into = a.received_into_key !== undefined
-    ? (a.received_into_key == null ? null : (opts.find((o) => o.key === a.received_into_key) || null))
-    : pickReceivedInto(opts, a.received_into);
+    ? (a.received_into_key == null ? null
+      : String(a.received_into_key).startsWith(NEW_ACCOUNT_KEY) ? trackedAccountFor(opts, String(a.received_into_key).slice(NEW_ACCOUNT_KEY.length))
+      : (opts.find((o) => o.key === a.received_into_key) || null))
+    : (a.track_account && String(a.track_account).trim() ? trackedAccountFor(opts, a.track_account) : pickReceivedInto(opts, a.received_into));
   return { existing, openInvoice, into };
 }
 

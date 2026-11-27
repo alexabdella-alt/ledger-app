@@ -146,3 +146,43 @@ describe("C776 — the card for the screenshot's conversation", () => {
     expect(block).toContain("await bookToDb(inv)");
   });
 });
+
+// ★ C778 — "Do you use that account for the business too?" — asked once when the money landed in a
+// personal account the books don't track; yes → the account is added and the money counts as cash there.
+import { trackedAccountFor } from "../src/lib/toldIncome.js";
+import { CHECKLIST_COPY } from "../src/lib/firstRun.js";
+describe("C778 — yes, I use it for the business too", () => {
+  it("★★★ track_account → a NEW account on the card, and Confirm adds it (staged as new:<name>)", () => {
+    const a = { ...ZELLE, track_account: "Personal Checking" };
+    const { actions, items } = buildPendingConfirmation([a], { invoices: [], chart: CHART, today: TODAY, receivedIntoOptions: OPTS, openItems: [], arCode: "1100" });
+    expect(actions[0].received_into_key).toBe("new:Personal Checking");
+    expect(items[0].count).toBe(1);
+    expect(items[0].description).toBe("Record $500.00 received from AllDay Pizza (sponsored content) · Service Revenue · Nov 27, 2026 · into Personal Checking (added to your accounts, so its money counts in your books).");
+  });
+  it("★★ an account already tracked under that name is used, never added twice", () => {
+    const opts = receivedIntoOptions({ bankAccounts: [...BANKS, { id: "b2", name: "Personal Checking", type: "checking", gl_code: "1020" }], getAccountByRole: byRole });
+    expect(trackedAccountFor(opts, "personal checking")).toMatchObject({ code: "1020" });
+    expect(trackedAccountFor(opts, "personal checking").create).toBeUndefined();
+    expect(trackedAccountFor(opts, "")).toBeNull();
+  });
+  it("★★★ the executor adds the account before booking, and books into it", () => {
+    const s = readFileSync("src/App.jsx", "utf8");
+    const i = s.indexOf('if (action.type === "record_income")');
+    const block = s.slice(i, s.indexOf('if (action.type === "reverse_entry")', i));
+    expect(block.indexOf("createBankAccountInline({ name: r.into.name")).toBeGreaterThan(0);
+    expect(block.indexOf("createBankAccountInline(")).toBeLessThan(block.indexOf("buildToldIncome(action"));
+  });
+  it("★★★ the assistant sees which accounts are tracked, and asks the question once", () => {
+    const ai = readFileSync("src/lib/ai.js", "utf8");
+    expect(ai).toContain("ACCOUNTS THE BOOKS TRACK (their statements come in here):");
+    expect(readFileSync("src/App.jsx", "utf8")).toContain("trackedAccountLabels: (bankAccounts || [])");
+    const g = readFileSync("supabase/functions/ai-proxy/aiProfiles.js", "utf8");
+    expect(g).toContain('"Do you use that account for the business too? If so, I\'ll add it here so its money counts in your books."');
+    expect(g).toContain('"track_account"');
+    expect(g).toContain("Ask this at most once per account");
+  });
+  it("★★ setup asks for every account used for the business, personal ones included", () => {
+    expect(CHECKLIST_COPY.bank.label).toBe("Add every account you use for the business");
+    expect(CHECKLIST_COPY.bank.hint).toMatch(/^Including a personal account or card you also use for it — then its money counts here\./);
+  });
+});
