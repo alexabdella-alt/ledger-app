@@ -64,6 +64,17 @@ describe("C776 — where the money landed", () => {
   });
 });
 
+describe("C776 — a personal account the books track", () => {
+  it("★★★ 'personal account' → that tracked account (cash goes up), not money taken out", () => {
+    const opts = receivedIntoOptions({ bankAccounts: [...BANKS, { id: "b2", name: "Personal Checking", type: "checking", gl_code: "1020" }], getAccountByRole: byRole });
+    const into = pickReceivedInto(opts, "my personal account");
+    expect(into.code).toBe("1020");
+    const inv = buildToldIncome(ZELLE, { chart: [...CHART, { code: "1020", name: "Personal Checking", category: "Assets" }], receivedInto: into, today: TODAY, id: 1, bookedAt: "x" });
+    expect(glAccountBalance("1020", [inv])).toBe(500);
+    expect(glAccountBalance("3300", [inv])).toBe(0);
+  });
+});
+
 describe("C776 — the entry (the real ledger effect)", () => {
   it("★★★ Zelle to the owner personally: income +$500, $500 counted as taken out (equity −$500), cash unchanged", () => {
     const into = pickReceivedInto(OPTS, "personal account");

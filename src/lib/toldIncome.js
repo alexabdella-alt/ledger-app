@@ -52,7 +52,14 @@ export function pickReceivedInto(options = [], said = "") {
   const opts = options || [];
   const t = String(said || "").trim().toLowerCase();
   if (!t) return opts.find((o) => o.key !== PERSONAL) || null;
-  if (/\b(personal|my own|own account|myself|to me|my account)\b/.test(t)) return opts.find((o) => o.key === PERSONAL) || null;
+  if (/\b(personal|my own|own account|myself|to me|my account)\b/.test(t)) {
+    // A personal account the books TRACK (added in Settings because it is used for the business too)
+    // is that account — its statements come in, so money landing there is cash on the books. Only an
+    // untracked personal account is money the owner took out.
+    const tracked = opts.filter((o) => o.key !== PERSONAL && /\bpersonal\b/i.test(`${o.label || ""} ${o.name || ""}`));
+    if (tracked.length === 1) return tracked[0];
+    return opts.find((o) => o.key === PERSONAL) || null;
+  }
   return pickPayFrom(opts.filter((o) => o.key !== PERSONAL), t);
 }
 
