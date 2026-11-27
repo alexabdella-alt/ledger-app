@@ -146,6 +146,10 @@ What each applied migration's checks returned, verbatim as recorded at the time 
 > **RULE: every migration application gets its date recorded on this line, in the same docs commit that closes the session.** The repo records migration FILES; nothing in it records their APPLICATION, and there is no `supabase_migrations.schema_migrations` table to ask (see below — deliberately). So a file's presence proves only that it was written. Without this line every fresh session re-derives the answer, guesses wrong, and re-raises a migration as "still pending" that went live days ago. *(Cost already paid: `060` was flagged unapplied twice after it was live.)*
 
 
+## Go-live billing reset (data write, not a migration) — 2026-11-27 ~22:30 UTC
+
+On the operator's go-ahead ("yes to all three"). A read first: 16 companies, every one with a `subscriptions` row; only Franklin Ave Pizza held Stripe ids (sandbox, `pro`/`active` from the 2026-11-21 sandbox test). Then one transaction: every row's Stripe ids cleared, `plan='trial'`, `status='trialing'`, `trial_ends_at = now() + 30 days`, period dates cleared; a trial row inserted for any company without one (none). The final statement returned `PASS - 16 companies: no Stripe IDs, each on a 30-day trial ending Dec 27, 2026`, and a second read showed all 16 identical (`trial / trialing / 2026-12-27`, no ids). Run with `supabase db query --linked -f`. Same session: `billing` redeployed (22:27:53 UTC, JWT on; no-login probe → 401; unsigned webhook → 400).
+
 ## `103_trial_30_days` — APPLIED & VERIFIED 2026-11-24 17:12 UTC (C773)
 
 Applied with `supabase db query --linked -f` on the operator's explicit go-ahead ("yes apply 103"), file sha256 `6c30f813a6e24e18…`. The function is 102's `start_company_trial()` verbatim with one line changed (diffed mechanically; a test pins it). One rolled-back probe (`supabase/verify/103_trial_30_days.sql`): **before** — "FAIL - a new company's trial is 14 days"; **after** — "PASS - a new company gets a 30-day trial". Existing rows untouched; existing companies get their fresh 30 days at billing launch, as a separate data step.
